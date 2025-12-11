@@ -8,7 +8,10 @@ Features:
 - Database connection check
 - Ngrok tunnel management
 - Webhook auto-configuration
-- Admin tools available for super users (batch import, system monitoring)
+- Admin tools (User Management, Signatures, Knowledge Base, Tools)
+- AI Target Finder with Knowledge Base integration
+- Contact & Company management
+- Multi-channel outreach (Email, WhatsApp, LinkedIn)
 """
 import os
 import sys
@@ -128,16 +131,9 @@ def check_environment():
         'OPENAI_API_KEY': 'OpenAI API key',
     }
     
-    # Optional Twilio WhatsApp (sandbox or paid)
-    optional_twilio = {
-        'TWILIO_SANDBOX_WHATSAPP_NUMBER': 'Twilio WhatsApp Sandbox number (for free testing)',
-        'TWILIO_WHATSAPP_NUMBER': 'Twilio WhatsApp number (for paid account)',
-        'TWILIO_PHONE_NUMBER': 'Twilio SMS phone number',
-    }
-    
     # Optional but recommended for AI features
     optional_vars = {
-        'RAG_API_KEY': 'RAG service API key (for AI Target Finder)',
+        'RAG_API_KEY': 'RAG service API key (for AI Target Finder & Knowledge Base)',
         'RAG_SERVICE_URL': 'RAG service URL (default: https://rag.kcube-consulting.com)',
         'GEMINI_API_KEY': 'Google Gemini API key (for AI Target Finder - Notebook LM)',
         'SUPABASE_ACCESS_TOKEN': 'Supabase Personal Access Token (for OAuth URL auto-config)',
@@ -181,18 +177,6 @@ def check_environment():
         else:
             print(f"  [OK] {var:25} = {value}")
     
-    # Check optional Twilio variables
-    for var, desc in optional_twilio.items():
-        value = os.getenv(var)
-        if not value:
-            # Only show warning if neither sandbox nor regular WhatsApp number is set
-            if var == 'TWILIO_SANDBOX_WHATSAPP_NUMBER' and not os.getenv('TWILIO_WHATSAPP_NUMBER'):
-                missing_optional.append(f"  [!] {var:25} - {desc} (optional, or set TWILIO_WHATSAPP_NUMBER)")
-            elif var != 'TWILIO_SANDBOX_WHATSAPP_NUMBER':
-                missing_optional.append(f"  [!] {var:25} - {desc} (optional)")
-        else:
-            print(f"  [OK] {var:25} = {value}")
-    
     if missing:
         print("\n[X] Missing required environment variables:")
         for item in missing:
@@ -214,14 +198,14 @@ def check_environment():
 
 
 def check_ai_finder_access():
-    """Check and report AI Target Finder feature availability"""
-    print("\n[AI] AI Target Finder Feature Status:")
+    """Check and report AI Target Finder and Knowledge Base feature availability"""
+    print("\n[AI] AI Features Status:")
     
     openai_key = os.getenv('OPENAI_API_KEY')
     rag_key = os.getenv('RAG_API_KEY')
     gemini_key = os.getenv('GEMINI_API_KEY')
     
-    # OpenAI is required
+    # OpenAI is required for AI features
     if openai_key:
         print("  [OK] OpenAI API configured - Basic AI features available")
     else:
@@ -233,15 +217,16 @@ def check_ai_finder_access():
     features_available = []
     features_missing = []
     
+    # Check RAG service (used by both AI Target Finder and Knowledge Base)
     if rag_key:
-        features_available.append("RAG-enhanced contact analysis")
+        features_available.append("RAG service (AI Target Finder + Knowledge Base)")
     else:
-        features_missing.append("RAG service (enhanced contact analysis)")
+        features_missing.append("RAG service (AI Target Finder & Knowledge Base will be limited)")
     
     if gemini_key:
         features_available.append("Gemini/Notebook LM integration")
     else:
-        features_missing.append("Gemini API (Notebook LM integration)")
+        features_missing.append("Gemini API (Notebook LM integration - optional)")
     
     if features_available:
         print("  [OK] Enhanced features available:")
@@ -253,11 +238,15 @@ def check_ai_finder_access():
         for feature in features_missing:
             print(f"       - {feature}")
         print("      AI Target Finder will work with reduced functionality")
+        print("      Knowledge Base queries will be limited without RAG_API_KEY")
     
     if openai_key and rag_key and gemini_key:
-        print("  [✓] Full AI Target Finder capabilities available!")
+        print("  [✓] Full AI capabilities available (Target Finder + Knowledge Base)!")
+    elif openai_key and rag_key:
+        print("  [✓] AI Target Finder + Knowledge Base available!")
     elif openai_key:
         print("  [~] AI Target Finder available with basic functionality")
+        print("  [~] Knowledge Base requires RAG_API_KEY for full functionality")
 
 
 def check_database():

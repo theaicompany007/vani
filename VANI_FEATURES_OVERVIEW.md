@@ -129,12 +129,46 @@
 ### 14. **Contact & Company Management**
 - **Location**: `app/api/contacts.py`, `app/api/companies.py`
 - **Features**:
-  - Contact CRUD operations
-  - Company management
+  - Contact CRUD operations with inline editing
+  - Company management with associated contacts
   - Contact-company mapping
   - Domain extraction and backfilling
   - Excel import/export
   - Bulk operations
+  - AI-powered bulk import with deduplication
+  - Multi-sheet Excel support
+  - Industry normalization and inference
+
+### 15. **AI Target Finder**
+- **Location**: `app/api/targets.py`, `app/services/target_identification.py`
+- **Features**:
+  - AI-powered target identification using OpenAI, RAG, and Gemini
+  - Multi-industry search support
+  - Search configuration presets (High Priority, Broad Search, C-Level Only)
+  - Knowledge base context in recommendations
+  - Search history with saved results
+  - Bulk target creation from recommendations
+  - Seniority scoring and confidence metrics
+
+### 16. **Knowledge Base**
+- **Location**: `app/api/knowledge_base.py`, `app/integrations/rag_client.py`
+- **Features**:
+  - Query knowledge base with collection filtering
+  - Upload PDF and TXT documents
+  - Scrape and ingest URLs
+  - Platform-specific tagging (VANI, Revenue Growth, GenAI Agentic, Neura360)
+  - Neura360 component support (Signal, Spark, Risk, Narrative, Trend, Agents)
+  - Auto-tagging with "the-ai-company" and platform tags
+  - Metadata management (industry, source, company)
+
+### 17. **Signature Management**
+- **Location**: `app/api/signatures.py`, `app/utils/signature_formatter.py`
+- **Features**:
+  - Channel-specific signatures (Email, WhatsApp, LinkedIn)
+  - HTML formatting for email
+  - Plain text formatting for WhatsApp/LinkedIn
+  - Default signature selection
+  - Signature profiles with metadata
 
 ---
 
@@ -194,6 +228,24 @@
 - `GET /api/admin/scripts/list` - List available scripts
 - `POST /api/admin/scripts/run` - Run a script
 - `POST /api/admin/scripts/import-contacts` - Run batch contact import
+
+### AI Target Finder (`app/api/targets.py`)
+- `POST /api/targets/ai-identify` - Identify targets using AI
+- `POST /api/targets/ai-create` - Create targets from AI recommendations
+- `GET /api/targets/ai-search-history` - Get search history
+
+### Knowledge Base (`app/api/knowledge_base.py`)
+- `GET /api/knowledge-base/query` - Query knowledge base
+- `GET /api/knowledge-base/collections` - List available collections
+- `POST /api/knowledge-base/upload` - Upload documents (PDF/TXT)
+- `POST /api/knowledge-base/ingest-url` - Scrape and ingest URL
+
+### Signatures (`app/api/signatures.py`)
+- `GET /api/signatures` - List signature profiles
+- `GET /api/signatures/default` - Get default signature
+- `POST /api/signatures` - Create signature profile
+- `PUT /api/signatures/<id>` - Update signature profile
+- `DELETE /api/signatures/<id>` - Delete signature profile
 
 ### Contacts (`app/api/contacts.py`)
 - `GET /api/contacts` - List contacts
@@ -259,6 +311,10 @@
 - `meetings` - Schedule meetings
 - `sheets_import_export` - Import/export from Google Sheets
 - `ai_message_generation` - Generate AI messages
+- `contact_management` - Manage contacts
+- `company_management` - Manage companies
+- `ai_target_finder` - Use AI Target Finder
+- `knowledge_base_management` - Manage knowledge base (optional)
 
 ---
 
@@ -308,6 +364,8 @@
   - `admin.py` - Admin tools (super users only)
   - `contacts.py` - Contact management
   - `companies.py` - Company management
+  - `knowledge_base.py` - Knowledge Base operations
+  - `signatures.py` - Signature management
 
 - **Integrations**: `app/integrations/`
   - `resend_client.py` - Email
@@ -317,12 +375,17 @@
   - `cal_com_client.py` - Meetings
   - `google_sheets_client.py` - Google Sheets
   - `pitch_generator.py` - Pitch generation
+  - `rag_client.py` - RAG service client (Knowledge Base)
+  - `gemini_client.py` - Google Gemini/Notebook LM client
 
 - **Models**: `app/models/`
   - `targets.py` - Target data models
+  - `target_recommendation.py` - AI Target Finder recommendation models
   - `outreach.py` - Outreach models
   - `meetings.py` - Meeting models
   - `webhooks.py` - Webhook models
+  - `contacts.py` - Contact models
+  - `companies.py` - Company models
 
 - **Webhooks**: `app/webhooks/`
   - `resend_handler.py` - Resend webhooks
@@ -333,6 +396,12 @@
 
 - **Migrations**: `app/migrations/`
   - SQL migration files for database setup
+  - Includes migrations for contacts, companies, signatures, AI Target Finder, Knowledge Base
+
+- **Services**: `app/services/`
+  - `target_identification.py` - AI Target Finder service
+  - `industry_context.py` - Industry context service
+  - `company_enrichment.py` - Company enrichment service
 
 ### Scripts
 - **Setup**: `scripts/`
@@ -340,6 +409,12 @@
   - `seed_targets.py` - Seed sample data
   - `configure_webhooks.py` - Webhook setup
   - `import_contacts_batch.py` - Batch contact import with threading
+  - `import_all_contacts_ai.py` - AI-powered bulk import with deduplication
+  - `fix_user.py` - Fix or create user in app_users table
+  - `grant_default_permissions.py` - Grant use case permissions
+  - `check_user_permissions.py` - Check user permissions
+  - `assign_all_industries_to_super_users.py` - Assign all industries to super users
+  - `sync_industries_from_contacts.py` - Sync industries from contacts table
 
 ### Configuration
 - **Main Entry**: `run.py` - Application startup
@@ -377,7 +452,8 @@ VANI.bat
 
 **Last Updated**: December 2025  
 **Project**: VANI (Virtual Agent Network Interface)  
-**Status**: Production Ready
+**Status**: Production Ready  
+**Version**: 2.0 (with Knowledge Base, AI Target Finder, Contact/Company Management)
 
 
 
