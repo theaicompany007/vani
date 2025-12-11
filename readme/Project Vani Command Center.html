@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project Vani | Strategic Command</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap');
+        
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; color: #1e293b; }
+        
+        /* Custom Chart Container per Requirements */
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 300px;
+            max-height: 400px;
+        }
+        @media (min-width: 768px) {
+            .chart-container { height: 350px; }
+        }
+
+        .nav-active {
+            border-bottom: 2px solid #059669;
+            color: #059669;
+            font-weight: 600;
+        }
+
+        .card-hover:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+        
+        .script-box {
+            background-color: #f1f5f9;
+            border-left: 4px solid #059669;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <div class="flex items-center gap-3">
+                    <div class="bg-emerald-600 text-white w-10 h-10 rounded-lg flex items-center justify-center font-bold text-xl">V</div>
+                    <div>
+                        <h1 class="text-xl font-bold text-slate-900">Project Vani</h1>
+                        <p class="text-xs text-slate-500 font-medium tracking-wide uppercase">Strategic Reconnaissance</p>
+                    </div>
+                </div>
+                <div class="text-sm text-slate-500 hidden md:block">
+                    Operational Status: <span class="text-emerald-600 font-bold">READY TO DEPLOY</span>
+                </div>
+            </div>
+            <!-- Navigation -->
+            <nav class="flex gap-8 -mb-px overflow-x-auto text-sm">
+                <button onclick="switchTab('dashboard')" id="nav-dashboard" class="nav-btn nav-active pb-3 px-1 transition-colors">Situation Room</button>
+                <button onclick="switchTab('arbitrage')" id="nav-arbitrage" class="nav-btn text-slate-500 hover:text-slate-700 pb-3 px-1 transition-colors">The Arbitrage</button>
+                <button onclick="switchTab('commercial')" id="nav-commercial" class="nav-btn text-slate-500 hover:text-slate-700 pb-3 px-1 transition-colors">Revenue Sim</button>
+                <button onclick="switchTab('targets')" id="nav-targets" class="nav-btn text-slate-500 hover:text-slate-700 pb-3 px-1 transition-colors">Target Hit List</button>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
+
+        <!-- VIEW 1: DASHBOARD / SITUATION ROOM -->
+        <section id="view-dashboard" class="space-y-8 animate-fade-in">
+            <!-- Intro Card -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                <h2 class="text-2xl font-bold text-slate-900 mb-2">Executive Summary: The Coverage Gap</h2>
+                <p class="text-slate-600 leading-relaxed mb-4">
+                    FMCG giants like Asian Paints and Coca-Cola miss out on <strong>80% of potential retail outlets</strong> because human sales visits are too expensive (₹300/visit) for small orders. Apps have failed due to retailer literacy issues.
+                </p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+                    <div class="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                        <h3 class="font-bold text-slate-800 mb-1"><i class="fa-solid fa-brain text-indigo-500 mr-2"></i>The Brain (The AI Company)</h3>
+                        <p class="text-sm text-slate-600">Proprietary "Sales Ontology" trained on millions of Indian trade conversations. Speaks Hinglish, Tamil, Bengali.</p>
+                    </div>
+                    <div class="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                        <h3 class="font-bold text-slate-800 mb-1"><i class="fa-solid fa-network-wired text-emerald-500 mr-2"></i>The Body (Platform)</h3>
+                        <p class="text-sm text-slate-600">Infrastructure-agnostic telecom integration. Zero-latency voice that replaces the need for human field agents.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- The Problem Viz -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div class="lg:col-span-2 bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                    <div class="flex justify-between items-center mb-6">
+                        <h3 class="text-lg font-bold text-slate-800">The "Void" in Distribution</h3>
+                        <span class="text-xs font-semibold bg-rose-100 text-rose-700 px-2 py-1 rounded-full">80% Unserved</span>
+                    </div>
+                    <!-- Chart Container -->
+                    <div class="chart-container">
+                        <canvas id="gapChart"></canvas>
+                    </div>
+                    <p class="text-center text-sm text-slate-500 mt-4">Top brands reach only 2-3M stores directly. 9M+ are "Dark Stores".</p>
+                </div>
+
+                <div class="bg-indigo-900 text-white rounded-xl shadow-lg p-6 flex flex-col justify-center relative overflow-hidden">
+                    <div class="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-white opacity-10 rounded-full blur-xl"></div>
+                    <h3 class="text-xl font-bold mb-4 z-10">The Solution: Vani</h3>
+                    <ul class="space-y-4 z-10">
+                        <li class="flex items-start">
+                            <i class="fa-solid fa-check-circle mt-1 mr-3 text-emerald-400"></i>
+                            <span class="text-indigo-100 text-sm"><strong>Agentic AI:</strong> Wakes up, plans beat, calls stores autonomously.</span>
+                        </li>
+                        <li class="flex items-start">
+                            <i class="fa-solid fa-check-circle mt-1 mr-3 text-emerald-400"></i>
+                            <span class="text-indigo-100 text-sm"><strong>Voice First:</strong> No typing required. Zero friction for Kirana owners.</span>
+                        </li>
+                        <li class="flex items-start">
+                            <i class="fa-solid fa-check-circle mt-1 mr-3 text-emerald-400"></i>
+                            <span class="text-indigo-100 text-sm"><strong>Infinite Scale:</strong> Call 10M stores in a day if needed.</span>
+                        </li>
+                    </ul>
+                    <button onclick="switchTab('targets')" class="mt-8 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2 px-4 rounded transition w-full">Deploy Pilot Strategy</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- VIEW 2: ARBITRAGE -->
+        <section id="view-arbitrage" class="hidden space-y-8 animate-fade-in">
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                <h2 class="text-2xl font-bold text-slate-900 mb-2">The Unit Economics Arbitrage</h2>
+                <p class="text-slate-600 mb-6">Why human agents cannot service the long tail, and why Vani creates immediate margin.</p>
+                
+                <!-- Chart Container -->
+                <div class="chart-container">
+                    <canvas id="arbitrageChart"></canvas>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <!-- Human Card -->
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 border-t-4 border-t-rose-500">
+                    <h3 class="font-bold text-lg mb-2">Human Salesman</h3>
+                    <div class="text-4xl font-extrabold text-slate-900 mb-1">₹300</div>
+                    <div class="text-xs text-slate-500 uppercase tracking-wide mb-4">Cost Per Visit</div>
+                    <ul class="text-sm text-slate-600 space-y-2">
+                        <li><i class="fa-solid fa-xmark text-rose-500 mr-2"></i>Max 30 stores/day</li>
+                        <li><i class="fa-solid fa-xmark text-rose-500 mr-2"></i>High training cost</li>
+                        <li><i class="fa-solid fa-xmark text-rose-500 mr-2"></i>Forgets to upsell</li>
+                    </ul>
+                </div>
+
+                <!-- App Card -->
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 border-t-4 border-t-slate-400">
+                    <h3 class="font-bold text-lg mb-2">App Notification</h3>
+                    <div class="text-4xl font-extrabold text-slate-900 mb-1">₹0.10</div>
+                    <div class="text-xs text-slate-500 uppercase tracking-wide mb-4">Cost Per Msg</div>
+                    <ul class="text-sm text-slate-600 space-y-2">
+                        <li><i class="fa-solid fa-check text-slate-500 mr-2"></i>Unlimited Reach</li>
+                        <li><i class="fa-solid fa-xmark text-rose-500 mr-2"></i>5% Open Rate</li>
+                        <li><i class="fa-solid fa-xmark text-rose-500 mr-2"></i>Requires Literacy</li>
+                    </ul>
+                </div>
+
+                <!-- Vani Card -->
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 border-t-4 border-t-emerald-500 shadow-md transform scale-105">
+                    <h3 class="font-bold text-lg mb-2 flex items-center gap-2">Vani (The AI Company) <span class="bg-emerald-100 text-emerald-800 text-xs px-2 py-0.5 rounded-full">Recommended</span></h3>
+                    <div class="text-4xl font-extrabold text-emerald-600 mb-1">₹5 - ₹10</div>
+                    <div class="text-xs text-slate-500 uppercase tracking-wide mb-4">Cost Per Interaction</div>
+                    <ul class="text-sm text-slate-600 space-y-2">
+                        <li><i class="fa-solid fa-check text-emerald-500 mr-2"></i>Unlimited Scale</li>
+                        <li><i class="fa-solid fa-check text-emerald-500 mr-2"></i>Native Voice Negotiation</li>
+                        <li><i class="fa-solid fa-check text-emerald-500 mr-2"></i>Direct DMS Integration</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- VIEW 3: COMMERCIAL MODELS -->
+        <section id="view-commercial" class="hidden space-y-8 animate-fade-in">
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                <h2 class="text-2xl font-bold text-slate-900 mb-4">Revenue Simulator</h2>
+                <p class="text-slate-600 mb-6">Select a target volume to project revenue across our three commercial strategies.</p>
+
+                <!-- Inputs -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 bg-slate-50 p-6 rounded-lg">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-2">Target Store Count</label>
+                        <input type="range" id="storeInput" min="1000" max="100000" step="1000" value="5000" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-600" oninput="updateRevenue()">
+                        <div class="flex justify-between text-xs text-slate-500 mt-1">
+                            <span>1k (Pilot)</span>
+                            <span id="storeDisplay" class="font-bold text-emerald-600 text-lg">5,000 Stores</span>
+                            <span>100k (Enterprise)</span>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-2">Avg. Order Value (₹)</label>
+                        <div class="relative rounded-md shadow-sm">
+                            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                                <span class="text-gray-500 sm:text-sm">₹</span>
+                            </div>
+                            <input type="number" id="aovInput" value="2000" class="block w-full rounded-md border-gray-300 pl-7 py-2 focus:border-emerald-500 focus:ring-emerald-500 sm:text-sm" oninput="updateRevenue()">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Model Cards -->
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <!-- Option A -->
+                    <div class="bg-white border border-slate-200 rounded-xl p-6 hover:shadow-lg transition-shadow relative overflow-hidden">
+                        <div class="absolute top-0 right-0 bg-yellow-400 text-yellow-900 text-xs font-bold px-3 py-1 rounded-bl-lg">FOR PILOTS</div>
+                        <h3 class="text-xl font-bold text-slate-800">The "Lazarus" Model</h3>
+                        <p class="text-xs text-slate-500 mb-4">Pure Outcome: We only get paid if we wake up a dead store.</p>
+                        <div class="my-4 pt-4 border-t border-slate-100">
+                            <p class="text-sm text-slate-600">Success Fee: <strong>₹150</strong> / Order</p>
+                            <p class="text-sm text-slate-600">Est. Conversion: <strong>10%</strong></p>
+                        </div>
+                        <div class="mt-6">
+                            <span class="text-xs text-slate-400 uppercase">Projected Revenue</span>
+                            <div class="text-3xl font-bold text-emerald-600" id="rev-lazarus">₹75,000</div>
+                        </div>
+                    </div>
+
+                    <!-- Option B -->
+                    <div class="bg-white border border-slate-200 rounded-xl p-6 hover:shadow-lg transition-shadow">
+                        <h3 class="text-xl font-bold text-slate-800">The "Digital Seat"</h3>
+                        <p class="text-xs text-slate-500 mb-4">Pure SaaS: Replace human headcount with digital seats.</p>
+                        <div class="my-4 pt-4 border-t border-slate-100">
+                            <p class="text-sm text-slate-600">License: <strong>₹5,000</strong> / Agent / Mo</p>
+                            <p class="text-sm text-slate-600">Capacity: <strong>5,000</strong> stores/agent</p>
+                        </div>
+                        <div class="mt-6">
+                            <span class="text-xs text-slate-400 uppercase">Projected Revenue (MRR)</span>
+                            <div class="text-3xl font-bold text-indigo-600" id="rev-seat">₹5,000</div>
+                        </div>
+                    </div>
+
+                    <!-- Option C -->
+                    <div class="bg-white border border-slate-200 rounded-xl p-6 hover:shadow-lg transition-shadow relative overflow-hidden">
+                        <div class="absolute top-0 right-0 bg-emerald-100 text-emerald-800 text-xs font-bold px-3 py-1 rounded-bl-lg">SCALE GOAL</div>
+                        <h3 class="text-xl font-bold text-slate-800">Hybrid Scale</h3>
+                        <p class="text-xs text-slate-500 mb-4">Base + Upside: Align incentives with order growth.</p>
+                        <div class="my-4 pt-4 border-t border-slate-100">
+                            <p class="text-sm text-slate-600">Platform Fee: <strong>₹10</strong> / Call</p>
+                            <p class="text-sm text-slate-600">Comm: <strong>1.5%</strong> of GMV</p>
+                        </div>
+                        <div class="mt-6">
+                            <span class="text-xs text-slate-400 uppercase">Projected Revenue</span>
+                            <div class="text-3xl font-bold text-emerald-600" id="rev-hybrid">₹200,000</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- VIEW 4: TARGETS (HIT LIST) -->
+        <section id="view-targets" class="hidden space-y-8 animate-fade-in">
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
+                <h2 class="text-2xl font-bold text-slate-900 mb-2">The Hit List</h2>
+                <p class="text-slate-600">High-priority targets. Click to reveal strategy and outreach script.</p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-12 gap-6">
+                <!-- List Side -->
+                <div class="md:col-span-4 space-y-4" id="target-list">
+                    <!-- Buttons generated by JS -->
+                </div>
+
+                <!-- Detail Side -->
+                <div class="md:col-span-8">
+                    <div id="target-detail" class="bg-white rounded-xl shadow-lg border border-slate-200 p-8 h-full sticky top-24">
+                        <div class="flex items-center gap-4 mb-6">
+                            <div id="detail-icon" class="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center text-3xl text-slate-400">
+                                <i class="fa-solid fa-crosshairs"></i>
+                            </div>
+                            <div>
+                                <h2 id="detail-name" class="text-3xl font-bold text-slate-900">Select a Target</h2>
+                                <p id="detail-role" class="text-slate-500 text-lg">To view recon data</p>
+                            </div>
+                        </div>
+                        
+                        <div id="detail-content" class="hidden space-y-6">
+                            <div>
+                                <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">The Pain Point</h4>
+                                <p id="detail-pain" class="text-slate-700 bg-rose-50 border border-rose-100 p-4 rounded-lg">Select a target to see their specific pain point.</p>
+                            </div>
+
+                            <div>
+                                <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">The Pitch Angle</h4>
+                                <p id="detail-angle" class="text-slate-800 font-medium italic border-l-4 border-indigo-500 pl-4">The strategic angle used to enter the account.</p>
+                            </div>
+
+                            <div>
+                                <div class="flex justify-between items-end mb-2">
+                                    <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wider">LinkedIn Script (Trojan Horse)</h4>
+                                    <button onclick="copyScript()" class="text-xs text-emerald-600 hover:text-emerald-700 font-bold"><i class="fa-regular fa-copy mr-1"></i>Copy</button>
+                                </div>
+                                <div class="script-box p-4 rounded-lg text-sm text-slate-700 leading-relaxed overflow-x-auto">
+                                    <p id="detail-script">...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Chosen Palette: Slate (Background), Emerald (Primary Action/Profit), Rose (Negative/Cost), Indigo (Information) -->
+    <!-- Application Structure Plan: 
+         1. Dashboard: High-level visual summary of the "Coverage Gap" thesis.
+         2. Arbitrage: Data comparison to prove the ROI of Vani vs Humans.
+         3. Commercial: Interactive calculator to help founders negotiate pricing.
+         4. Targets: CRM-like interface to manage the 5 specific leads provided in the report.
+    -->
+    
+    <!-- Visualization & Content Choices:
+         - Gap Chart: Doughnut chart to visualize the sheer volume of "Dark Stores" (9M vs 3M).
+         - Arbitrage: Comparative visual cards for instant comprehension of cost deltas.
+         - Calculator: Interactive input/output to make the business model tangible.
+    -->
+
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+
+    <script>
+        // --- DATA STORAGE ---
+        const targets = [
+            {
+                id: 'hul',
+                name: 'Hindustan Unilever',
+                role: 'Arun Neelakantan (ED, Customer Dev)',
+                color: 'bg-blue-600',
+                pain: 'Need to drive usage of "Shikhar" app in deep rural areas where literacy is a barrier. Apps work for the top tier, but fail for the bottom tier.',
+                angle: '"Shikhar is great for the top tier. Let Vani drive the bottom tier who can\'t type but can talk."',
+                script: "Hi Arun, been following your work on HUL's digital transformation. We've built Vani, an Agentic AI Voice Sales Officer designed to capture orders from the bottom 50% of retailers who struggle with apps like Shikhar due to literacy or habit. Vani calls them, negotiates in native Hindi/Tamil, and punches orders directly. Would you be open to a pilot on 1,000 'inactive' rural stores to see if we can wake them up?"
+            },
+            {
+                id: 'britannia',
+                name: 'Britannia Ind.',
+                role: 'Shantanu Gupta (National Sales Dev Mgr)',
+                color: 'bg-red-600',
+                pain: 'Losing market share to regional players (Parle) in rural belts due to lack of real-time reach. Human visits (₹300) make serving deep rural stores unviable.',
+                angle: '"Real-time coverage of remote villages without adding headcount."',
+                script: "Hi Shantanu, I know RTM efficiency is a priority for Britannia. The cost of a human visit (₹300) often makes serving deep rural stores unviable. We solve this with Vani—an autonomous Voice AI agent that costs pennies per call. She can cover your 'dark' rural territories daily without adding headcount. Can we run a 30-day reactivation pilot on your dead stockist list?"
+            },
+            {
+                id: 'marico',
+                name: 'Marico',
+                role: 'Vaibhav Bhanchawat (COO)',
+                color: 'bg-cyan-600',
+                pain: 'Aggressive expansion into Pharmacies and Cosmetic Stores—new channels where their current human salesforce is weak.',
+                angle: '"Don\'t hire 1,000 new agents for Pharmacies. Deploy Vani to call every chemist in India tomorrow."',
+                script: "Hi Vaibhav, congrats on the Foods growth. I know expanding into Pharmacies/Cosmetic outlets is key. Instead of hiring a massive new field force, have you considered a Digital Sales Force? Vani (our AI Agent) can call 10,000 pharmacies in a day to stock Saffola/Parachute. Zero latency, full negotiation capability. Happy to demo the voice capability if you have 5 mins."
+            },
+            {
+                id: 'asianpaints',
+                name: 'Asian Paints',
+                role: 'Yash Batra (Chief Sales Exec)',
+                color: 'bg-orange-500',
+                pain: 'High "Cost to Serve" for small hardware stores (selling putty/primer) compared to big "Beautiful Homes" dealers. 20k+ dealers don\'t justify a weekly visit.',
+                angle: '"Reactivate your 100k inactive dealers profitably."',
+                script: "Hi Yash, Asian Paints owns the dealer network, but the smaller hardware stores remain expensive to serve manually. We built Vani to fix this arbitrage. She is a Voice AI agent that can autonomously manage order collection from your bottom 20k dealers who don't order frequently enough to justify a weekly visit. Would love to show you how she handles 'Hinglish' negotiation."
+            },
+            {
+                id: 'itc',
+                name: 'ITC Limited',
+                role: 'Hemant Malik (Divisional Chief Exec)',
+                color: 'bg-yellow-600',
+                pain: 'Massive portfolio (Aashirvaad, Bingo, Sunfeast). Retailers forget to order half the SKUs because the human agent is in a rush.',
+                angle: '"Vani never forgets to upsell the new Bingo flavor."',
+                script: "Hi Hemant, the biggest challenge in General Trade is retailers forgetting to order the full SKU range. Humans rush the visit; Vani (our AI agent) doesn't. She memorizes purchase history and upsells specific SKUs (like Bingo or new launches) on every call. We are already seeing high conversion on 'dead' store pilots. Open to a quick chat?"
+            }
+        ];
+
+        // --- NAVIGATION LOGIC ---
+        function switchTab(tabId) {
+            // Update Buttons
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.classList.remove('nav-active', 'text-slate-900');
+                btn.classList.add('text-slate-500');
+            });
+            document.getElementById('nav-' + tabId).classList.add('nav-active');
+            document.getElementById('nav-' + tabId).classList.remove('text-slate-500');
+
+            // Show Section
+            document.querySelectorAll('section').forEach(sec => sec.classList.add('hidden'));
+            document.getElementById('view-' + tabId).classList.remove('hidden');
+
+            // Trigger Chart renders if needed
+            if (tabId === 'dashboard') renderGapChart();
+            if (tabId === 'arbitrage') renderArbitrageChart();
+        }
+
+        // --- REVENUE SIMULATOR LOGIC ---
+        function updateRevenue() {
+            const stores = parseInt(document.getElementById('storeInput').value);
+            const aov = parseInt(document.getElementById('aovInput').value);
+            
+            // Update Display Text
+            document.getElementById('storeDisplay').innerText = stores.toLocaleString() + " Stores";
+
+            // Calculation Logic
+            // Model A: Lazarus (10% conversion, 150 fee)
+            const conversionRate = 0.10;
+            const successFee = 150;
+            const revLazarus = stores * conversionRate * successFee;
+
+            // Model B: Seat (1 agent per 5000 stores, 5000 fee)
+            const agentsNeeded = Math.ceil(stores / 5000);
+            const seatFee = 5000;
+            const revSeat = agentsNeeded * seatFee;
+
+            // Model C: Hybrid (4 calls/mo/store, 10 platform fee, 1.5% comm)
+            const callsPerMonth = 4;
+            const platformFee = 10;
+            const commRate = 0.015;
+            // Assuming 25% conversion on regular calls for active stores
+            const activeConversion = 0.25; 
+            
+            const platformRev = stores * callsPerMonth * platformFee;
+            const commRev = stores * callsPerMonth * activeConversion * aov * commRate;
+            const revHybrid = platformRev + commRev;
+
+            // Update DOM
+            document.getElementById('rev-lazarus').innerText = "₹" + Math.round(revLazarus).toLocaleString();
+            document.getElementById('rev-seat').innerText = "₹" + Math.round(revSeat).toLocaleString();
+            document.getElementById('rev-hybrid').innerText = "₹" + Math.round(revHybrid).toLocaleString();
+        }
+
+        // --- TARGET LIST LOGIC ---
+        function renderTargetList() {
+            const container = document.getElementById('target-list');
+            container.innerHTML = '';
+            
+            targets.forEach((t, index) => {
+                const btn = document.createElement('div');
+                btn.className = 'card-hover bg-white p-4 rounded-lg border border-slate-200 cursor-pointer flex items-center justify-between group';
+                btn.onclick = () => loadTarget(index);
+                btn.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <div class="${t.color} text-white w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm">${t.name.substring(0,2).toUpperCase()}</div>
+                        <div>
+                            <h4 class="font-bold text-slate-800">${t.name}</h4>
+                            <p class="text-xs text-slate-500 truncate w-40">${t.role.split('(')[0]}</p>
+                        </div>
+                    </div>
+                    <i class="fa-solid fa-chevron-right text-slate-300 group-hover:text-emerald-500"></i>
+                `;
+                container.appendChild(btn);
+            });
+        }
+
+        function loadTarget(index) {
+            const t = targets[index];
+            document.getElementById('detail-content').classList.remove('hidden');
+            document.getElementById('detail-icon').innerHTML = `<div class="${t.color} text-white w-full h-full rounded-full flex items-center justify-center font-bold text-2xl">${t.name.substring(0,2)}</div>`;
+            document.getElementById('detail-name').innerText = t.name;
+            document.getElementById('detail-role').innerText = t.role;
+            document.getElementById('detail-pain').innerText = t.pain;
+            document.getElementById('detail-angle').innerText = t.angle;
+            document.getElementById('detail-script').innerText = t.script;
+        }
+
+        function copyScript() {
+            const text = document.getElementById('detail-script').innerText;
+            navigator.clipboard.writeText(text).then(() => {
+                alert('Script copied to clipboard!');
+            });
+        }
+
+        // --- CHART JS SETUP ---
+        let gapChartInstance = null;
+        let arbChartInstance = null;
+
+        function renderGapChart() {
+            const ctx = document.getElementById('gapChart').getContext('2d');
+            if (gapChartInstance) return; // Prevent re-render
+
+            gapChartInstance = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Direct Coverage (Humans)', 'The Void (Dark Stores)'],
+                    datasets: [{
+                        data: [3, 9], // 3M vs 9M approx
+                        backgroundColor: ['#e2e8f0', '#4f46e5'], // Slate vs Indigo
+                        borderWidth: 0,
+                        hoverOffset: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom' },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return context.label + ': ' + context.raw + ' Million Stores';
+                                }
+                            }
+                        }
+                    },
+                    cutout: '70%'
+                }
+            });
+        }
+
+        function renderArbitrageChart() {
+            const ctx = document.getElementById('arbitrageChart').getContext('2d');
+            if (arbChartInstance) return;
+
+            arbChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['Human Salesman', 'Vani (AI)'],
+                    datasets: [{
+                        label: 'Cost Per Visit (₹)',
+                        data: [300, 10],
+                        backgroundColor: ['#f43f5e', '#10b981'], // Rose vs Emerald
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: { display: true, text: 'Cost in Rupees (₹)' }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false }
+                    }
+                }
+            });
+        }
+
+        // --- INIT ---
+        window.onload = function() {
+            renderTargetList();
+            renderGapChart(); // Load first chart immediately
+            updateRevenue(); // Init simulator
+        };
+
+    </script>
+</body>
+</html>

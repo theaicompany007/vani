@@ -1,0 +1,49 @@
+[Unit]
+Description=VANI Flask Application
+Documentation=https://github.com/yourusername/vani
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=YOUR_USERNAME
+Group=YOUR_USERNAME
+WorkingDirectory=/opt/vani
+
+# Environment
+Environment="PATH=/opt/vani/venv/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PYTHONUNBUFFERED=1"
+Environment="PYTHONDONTWRITEBYTECODE=1"
+
+# Load environment variables from .env.local
+EnvironmentFile=/opt/vani/.env.local
+
+# Start Flask application
+ExecStart=/opt/vani/venv/bin/python /opt/vani/run.py
+
+# Restart policy
+Restart=always
+RestartSec=10
+StartLimitInterval=5min
+StartLimitBurst=5
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=vani-flask
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/opt/vani/logs /opt/vani/data
+
+# Resource limits
+LimitNOFILE=65536
+TimeoutStartSec=300
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
+

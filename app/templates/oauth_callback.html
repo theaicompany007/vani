@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Completing Sign In...</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
+    <div class="text-center text-white">
+        <div class="mb-4">
+            <i class="fa-solid fa-spinner fa-spin text-4xl"></i>
+        </div>
+        <h2 class="text-xl font-bold mb-2">Completing Sign In...</h2>
+        <p class="text-slate-300">Please wait while we complete your authentication.</p>
+    </div>
+    
+    <script type="module">
+        // Extract tokens from URL hash (Supabase OAuth pattern)
+        const hash = window.location.hash.substring(1);
+        const params = new URLSearchParams(hash);
+        const accessToken = params.get('access_token');
+        const refreshToken = params.get('refresh_token');
+        const error = params.get('error');
+        
+        if (error) {
+            window.location.href = '/login?error=' + encodeURIComponent(error);
+            return;
+        }
+        
+        if (accessToken) {
+            // Send tokens to server to complete OAuth flow
+            fetch('/api/auth/oauth-complete', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    access_token: accessToken,
+                    refresh_token: refreshToken
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Redirect to command center
+                    window.location.href = data.redirect_url || '/command-center';
+                } else {
+                    window.location.href = '/login?error=' + encodeURIComponent(data.error || 'OAuth completion failed');
+                }
+            })
+            .catch(error => {
+                console.error('OAuth completion error:', error);
+                window.location.href = '/login?error=' + encodeURIComponent('Failed to complete OAuth sign-in');
+            });
+        } else {
+            // No token in hash - might be using code flow
+            const urlParams = new URLSearchParams(window.location.search);
+            const code = urlParams.get('code');
+            
+            if (code) {
+                // Code-based flow - Supabase should handle this
+                // For now, redirect to login with message
+                window.location.href = '/login?error=OAuth code received but token extraction failed. Please try signing in again.';
+            } else {
+                window.location.href = '/login?error=No OAuth tokens found in callback';
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</body>
+</html>
+
+
+
+
+

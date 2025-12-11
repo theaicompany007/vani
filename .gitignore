@@ -1,0 +1,65 @@
+# Python
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Environment variables (sensitive)
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+import_log.txt
+
+# Data files (contains sensitive contact data)
+data/
+*.xlsx
+*.csv
+
+# Configuration files with secrets
+config/
+*.json
+!package.json
+!package-lock.json
+!tailwind.config.js
+
+# Node modules
+node_modules/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Cursor/Plans (optional - can include if you want)
+.cursor/
+
+# Temporary files
+*.tmp
+*.bak
+*.backup
+
+# Ngrok config (may contain tokens)
+ngrok.config.json
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+

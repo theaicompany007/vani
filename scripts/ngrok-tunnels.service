@@ -1,0 +1,36 @@
+[Unit]
+Description=ngrok Tunnels for Next.js Applications
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=postgres
+Group=postgres
+WorkingDirectory=/home/postgres/onlynereputation-agentic-app
+ExecStart=/home/postgres/onlynereputation-agentic-app/scripts/start-ngrok-tunnels.sh
+ExecStop=/home/postgres/onlynereputation-agentic-app/scripts/stop-ngrok-tunnels.sh
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Environment
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+[Install]
+WantedBy=multi-user.target
+
+
+
+
+
+
+
+
+
+
+
+
+
+

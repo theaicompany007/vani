@@ -1,0 +1,40 @@
+[Unit]
+Description=Ngrok Tunnel for VANI Application
+Documentation=https://ngrok.com/docs
+After=network-online.target vani-flask.service
+Wants=network-online.target
+Requires=vani-flask.service
+
+[Service]
+Type=simple
+User=YOUR_USERNAME
+Group=YOUR_USERNAME
+WorkingDirectory=/home/YOUR_USERNAME
+
+# Wait for Flask to be fully ready
+ExecStartPre=/bin/sleep 10
+ExecStartPre=/bin/sh -c 'until curl -f http://127.0.0.1:5000 2>/dev/null; do sleep 2; done'
+
+# Start ngrok tunnel with config
+ExecStart=/usr/local/bin/ngrok start vani --config /home/YOUR_USERNAME/.config/ngrok/ngrok.yml
+
+# Restart policy
+Restart=always
+RestartSec=10
+StartLimitInterval=5min
+StartLimitBurst=5
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=vani-ngrok
+
+# Security
+NoNewPrivileges=true
+
+# Resource limits
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target
+

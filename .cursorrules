@@ -1,0 +1,94 @@
+# Project VANI - Cursor Agent Rules
+
+## Project Overview
+Project VANI (Virtual Agent Network Interface) is a Flask-based outreach command center that enables multi-channel communication (Email, WhatsApp, LinkedIn) with AI-powered message generation, pitch presentations, and target management.
+
+## Technology Stack
+- **Backend**: Python 3.11+, Flask
+- **Database**: Supabase (PostgreSQL)
+- **Authentication**: Supabase Auth with use-case based permissions
+- **Integrations**: Resend (Email), Twilio (WhatsApp), LinkedIn API, Cal.com (Meetings), Google Sheets API, OpenAI API
+- **Frontend**: HTML/CSS/JavaScript (Tailwind CSS, Chart.js)
+- **Deployment**: Local development with ngrok for public access
+
+## Project Structure
+- `app/` - Main Flask application
+  - `api/` - API route blueprints (auth, targets, outreach, dashboard, pitch, permissions, industries)
+  - `auth/` - Authentication and authorization decorators
+  - `integrations/` - External service clients (Resend, Twilio, OpenAI, LinkedIn, Cal.com, Google Sheets)
+  - `models/` - Pydantic data models
+  - `templates/` - HTML templates (login, command_center)
+  - `webhooks/` - Webhook handlers (Resend, Twilio)
+  - `migrations/` - Database migration SQL files
+- `scripts/` - Setup, testing, and utility scripts
+- `run.py` - Main application entry point
+- `VANI.bat` - Windows batch file for setup and running
+
+## Key Features
+1. **Multi-Industry Support**: Industry-based tenant isolation with FMCG, Food & Beverages, etc.
+2. **Authentication & Authorization**: Supabase Auth with use-case based permissions
+3. **Target Management**: CRUD operations for target companies
+4. **Outreach**: Multi-channel messaging (Email, WhatsApp, LinkedIn)
+5. **AI Message Generation**: OpenAI-powered personalized messages
+6. **Pitch Presentations**: AI-generated pitch presentations per target
+7. **Analytics Dashboard**: Real-time statistics and engagement metrics
+8. **Google Sheets Integration**: Import/export targets and activities
+9. **Meeting Scheduling**: Cal.com integration
+10. **HIT Notifications**: Email and WhatsApp notifications for engagement events
+
+## Coding Standards
+- Use type hints for all functions
+- Follow Flask blueprint patterns for routes
+- Use Pydantic models for data validation
+- Handle errors gracefully with try-except blocks
+- Log important operations using Python logging
+- Use environment variables for configuration (`.env.local` takes priority)
+- Follow RESTful API conventions
+
+## Database Schema
+- `targets` - Target companies
+- `outreach_activities` - Communication history
+- `app_users` - Application users (linked to Supabase Auth)
+- `industries` - Industry definitions
+- `use_cases` - Available use cases
+- `user_permissions` - User permissions (many-to-many)
+- `generated_pitches` - AI-generated pitch presentations
+- `meetings` - Scheduled meetings
+- `webhook_events` - Webhook event logs
+
+## Important Patterns
+- **Authentication**: Use `@require_auth` decorator for protected routes
+- **Permissions**: Use `@require_use_case('use_case_code')` for feature access
+- **Super Users**: Use `@require_super_user` for admin-only routes
+- **Industry Context**: Access via `get_current_industry()` from Flask `g` context
+- **Supabase Client**: Use `get_supabase_client(current_app)` for database operations
+- **Supabase Auth**: Use `get_supabase_auth_client()` for authentication operations
+
+## Common Tasks
+- Adding new API routes: Create blueprint in `app/api/`, register in `app/routes.py`
+- Adding new integrations: Create client in `app/integrations/`
+- Adding new models: Create Pydantic model in `app/models/`
+- Database migrations: Add SQL file in `app/migrations/`, run via `do_setup.py`
+
+## Environment Variables
+- `SUPABASE_URL` - Supabase project URL
+- `SUPABASE_KEY` - Supabase anon key
+- `SUPABASE_SERVICE_KEY` - Supabase service role key
+- `OPENAI_API_KEY` - OpenAI API key
+- `RESEND_API_KEY` - Resend API key
+- `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_NUMBER` - Twilio config
+- `NGROK_AUTH_TOKEN` - Ngrok authentication token
+- `CAL_COM_API_KEY` - Cal.com API key
+- `GOOGLE_SHEETS_CREDENTIALS` - Google Sheets service account JSON
+
+## Testing
+- Run `python scripts/test_all_functions.py` to test all features
+- Use `VANI.bat` to set up venv and run the application
+- Database setup: Run `python do_setup.py` or use `COMPLETE_SETUP.sql` in Supabase SQL Editor
+
+## Notes
+- Always check for existing implementations before creating new ones
+- Follow the existing code patterns and structure
+- Ensure error handling is comprehensive
+- Use logging for debugging and monitoring
+- Consider multi-industry context when querying data

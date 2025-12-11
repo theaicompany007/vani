@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Strategic Pitch - {{ pitch.title or 'Project VANI' }}</title>
+    <!-- Tailwind CSS (compiled) -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tailwind.css') }}">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Header -->
+        <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
+            <div class="flex items-center gap-3 mb-4">
+                <div class="bg-emerald-600 text-white w-12 h-12 rounded-lg flex items-center justify-center font-bold text-2xl">V</div>
+                <div>
+                    <h1 class="text-2xl font-bold text-slate-900">Project VANI</h1>
+                    <p class="text-sm text-slate-500">Strategic Pitch Presentation</p>
+                </div>
+            </div>
+            {% if target %}
+            <div class="border-t border-slate-200 pt-4 mt-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                    {% if target.company_name %}
+                    <div>
+                        <span class="text-slate-500">Company:</span>
+                        <span class="font-semibold text-slate-900 ml-2">{{ target.company_name }}</span>
+                    </div>
+                    {% endif %}
+                    {% if target.contact_name %}
+                    <div>
+                        <span class="text-slate-500">Contact:</span>
+                        <span class="font-semibold text-slate-900 ml-2">{{ target.contact_name }}</span>
+                    </div>
+                    {% endif %}
+                    {% if target.industry %}
+                    <div>
+                        <span class="text-slate-500">Industry:</span>
+                        <span class="font-semibold text-slate-900 ml-2">{{ target.industry }}</span>
+                    </div>
+                    {% endif %}
+                    {% if target.location %}
+                    <div>
+                        <span class="text-slate-500">Location:</span>
+                        <span class="font-semibold text-slate-900 ml-2">{{ target.location }}</span>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Main Pitch Content -->
+        <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-8">
+            <!-- Title -->
+            {% if pitch.title %}
+            <h1 class="text-4xl font-bold text-slate-900 mb-8 pb-4 border-b border-slate-200">
+                {{ pitch.title }}
+            </h1>
+            {% endif %}
+
+            <div class="space-y-8">
+                <!-- Problem Statement -->
+                {% if pitch.problem %}
+                <section class="border-l-4 border-red-500 pl-6">
+                    <div class="flex items-center gap-3 mb-4">
+                        <div class="bg-red-100 text-red-600 w-10 h-10 rounded-lg flex items-center justify-center">
+                            <i class="fa-solid fa-exclamation-triangle"></i>
+                        </div>
+                        <h2 class="text-2xl font-bold text-slate-800">The Problem</h2>
+                    </div>
+                    <div class="text-slate-700 leading-relaxed prose prose-slate max-w-none">
+                        {{ pitch.problem|safe if pitch.problem else '' }}
+                    </div>
+                </section>
+                {% endif %}
+
+                <!-- Solution -->
+                {% if pitch.solution %}
+                <section class="border-l-4 border-emerald-500 pl-6">
+                    <div class="flex items-center gap-3 mb-4">
+                        <div class="bg-emerald-100 text-emerald-600 w-10 h-10 rounded-lg flex items-center justify-center">
+                            <i class="fa-solid fa-lightbulb"></i>
+                        </div>
+                        <h2 class="text-2xl font-bold text-slate-800">The Solution</h2>
+                    </div>
+                    <div class="text-slate-700 leading-relaxed prose prose-slate max-w-none">
+                        {{ pitch.solution|safe if pitch.solution else '' }}
+                    </div>
+                </section>
+                {% endif %}
+
+                <!-- Hit List -->
+                {% if pitch.hit_list %}
+                <section class="border-l-4 border-indigo-500 pl-6">
+                    <div class="flex items-center gap-3 mb-4">
+                        <div class="bg-indigo-100 text-indigo-600 w-10 h-10 rounded-lg flex items-center justify-center">
+                            <i class="fa-solid fa-bullseye"></i>
+                        </div>
+                        <h2 class="text-2xl font-bold text-slate-800">Strategic Hit List</h2>
+                    </div>
+                    <div class="bg-indigo-50 border border-indigo-200 rounded-lg p-6">
+                        <div class="text-slate-700 leading-relaxed prose prose-slate max-w-none">
+                            {{ pitch.hit_list|safe if pitch.hit_list else '' }}
+                        </div>
+                    </div>
+                </section>
+                {% endif %}
+
+                <!-- Trojan Horse Strategy -->
+                {% if pitch.trojan_horse %}
+                <section class="border-l-4 border-amber-500 pl-6">
+                    <div class="flex items-center gap-3 mb-4">
+                        <div class="bg-amber-100 text-amber-600 w-10 h-10 rounded-lg flex items-center justify-center">
+                            <i class="fa-solid fa-chess"></i>
+                        </div>
+                        <h2 class="text-2xl font-bold text-slate-800">Trojan Horse Strategy</h2>
+                    </div>
+                    <div class="bg-amber-50 border border-amber-200 rounded-lg p-6">
+                        <div class="text-slate-700 leading-relaxed prose prose-slate max-w-none">
+                            {{ pitch.trojan_horse|safe if pitch.trojan_horse else '' }}
+                        </div>
+                    </div>
+                </section>
+                {% endif %}
+            </div>
+
+            <!-- Call to Action -->
+            <div class="mt-12 pt-8 border-t border-slate-200">
+                <div class="bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-lg p-6 text-white">
+                    <h3 class="text-xl font-bold mb-2">Ready to Transform Your Business?</h3>
+                    <p class="text-emerald-50 mb-4">
+                        Let's discuss how Project VANI can help {{ target.company_name if target and target.company_name else 'your company' }} achieve strategic objectives.
+                    </p>
+                    <div class="flex flex-wrap gap-3">
+                        <span class="inline-flex items-center gap-2 bg-white/20 px-4 py-2 rounded-lg text-sm">
+                            <i class="fa-solid fa-envelope"></i>
+                            Schedule a Demo
+                        </span>
+                        <span class="inline-flex items-center gap-2 bg-white/20 px-4 py-2 rounded-lg text-sm">
+                            <i class="fa-solid fa-phone"></i>
+                            Book a Call
+                        </span>
+                        <span class="inline-flex items-center gap-2 bg-white/20 px-4 py-2 rounded-lg text-sm">
+                            <i class="fa-solid fa-file-pdf"></i>
+                            Download PDF
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="mt-6 text-center text-sm text-slate-500">
+            <p>Generated by Project VANI | Strategic Command Center</p>
+        </div>
+    </div>
+</body>
+</html>
+

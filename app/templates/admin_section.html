@@ -1,0 +1,72 @@
+    <!-- VIEW: ADMIN TOOLS (SUPER USER ONLY) -->
+    <section id="view-admin" class="hidden space-y-8 animate-fade-in">
+        <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+            <h2 class="text-2xl font-bold text-slate-900 mb-4">
+                <i class="fa-solid fa-tools text-indigo-600 mr-2"></i>Admin Tools
+            </h2>
+            <p class="text-slate-600 mb-6">System management and batch operations (Super Admin Only)</p>
+            
+            <!-- System Info -->
+            <div class="mb-8">
+                <h3 class="text-lg font-bold text-slate-900 mb-4">System Information</h3>
+                <div id="admin-system-info" class="text-center text-slate-500 py-4">
+                    <i class="fa-solid fa-spinner fa-spin"></i> Loading system info...
+                </div>
+            </div>
+            
+            <!-- Batch Contact Import -->
+            <div class="border-t border-slate-200 pt-8">
+                <h3 class="text-lg font-bold text-slate-900 mb-4">Batch Contact Import</h3>
+                <p class="text-sm text-slate-600 mb-4">Import contacts from Excel file using batch processing with threading and memory management.</p>
+                
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-2">Excel File Path</label>
+                        <input type="text" id="admin-excel-file" placeholder="data/the_ai_company.xlsx" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                        <p class="text-xs text-slate-500 mt-1">Relative to project root (e.g., data/filename.xlsx)</p>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-2">Batch Size</label>
+                            <input type="number" id="admin-batch-size" value="100" min="10" max="500" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-2">Threads</label>
+                            <input type="number" id="admin-threads" value="4" min="1" max="16" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-slate-700 mb-2">Sheet Name (Optional)</label>
+                        <input type="text" id="admin-sheet" placeholder="Leave empty for all sheets" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                    </div>
+                    
+                    <div class="space-y-2">
+                        <label class="flex items-center">
+                            <input type="checkbox" id="admin-update-existing" class="mr-2">
+                            <span class="text-sm text-slate-700">Update existing contacts</span>
+                        </label>
+                        <label class="flex items-center">
+                            <input type="checkbox" id="admin-import-only-new" class="mr-2">
+                            <span class="text-sm text-slate-700">Import only new contacts (skip duplicates)</span>
+                        </label>
+                        <label class="flex items-center">
+                            <input type="checkbox" id="admin-dry-run" class="mr-2">
+                            <span class="text-sm text-slate-700">Dry run (preview only, don't import)</span>
+                        </label>
+                    </div>
+                    
+                    <button onclick="runBatchImport()" class="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold">
+                        <i class="fa-solid fa-play mr-2"></i>Run Batch Import
+                    </button>
+                    
+                    <div id="admin-import-status"></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+
+
+

@@ -1,0 +1,56 @@
+# Core web framework
+Flask==3.0.0
+Werkzeug==3.0.1
+
+# Supabase client (will install compatible dependencies)
+supabase>=2.3.0
+# Direct Postgres connection for migrations
+psycopg2-binary==2.9.9
+
+# Environment and configuration
+python-dotenv==1.0.0
+
+# HTTP requests
+requests==2.31.0
+
+# Data validation
+pydantic>=2.5.0
+
+# Date/time handling
+python-dateutil==2.8.2
+pytz==2023.3
+
+# Email integration
+resend==2.0.0
+
+# OpenAI integration
+openai==1.12.0
+
+# WhatsApp integration
+twilio==9.3.0
+
+# Google Sheets integration
+google-api-python-client==2.110.0
+google-auth==2.25.2
+google-auth-oauthlib==1.2.0
+google-auth-httplib2==0.2.0
+gspread==5.12.0
+
+# Scheduling
+schedule==1.2.0
+
+# Logging and monitoring
+psutil==5.9.5
+
+# Development and testing
+pytest==7.4.0
+pytest-cov==4.1.0
+black==23.12.0
+flake8==6.1.0
+
+# Optional: For reading ngrok.yml (optional dependency)
+PyYAML>=6.0
+
+# Excel file parsing for contact import
+openpyxl>=3.1.0
+
