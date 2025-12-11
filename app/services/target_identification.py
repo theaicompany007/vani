@@ -93,28 +93,54 @@ class TargetIdentificationService:
         return sorted_recommendations[:limit]
     
     def _get_rag_knowledge(self, industry: str) -> Dict[str, Any]:
-        """Get RAG knowledge for industry"""
+        """Get RAG knowledge for industry - enhanced with multiple collections"""
         try:
-            # Query case studies
-            case_studies = self.rag_client.query_case_studies(industry, top_k=3)
+            # Query multiple collections for comprehensive knowledge
+            collections = ['case_studies', 'services', 'industry_insights', 'platforms', 'company_profiles']
             
-            # Query services
-            services = self.rag_client.query_services(industry, top_k=3)
+            # Query all collections at once
+            query_text = f"{industry} case study service solution platform"
+            rag_result = self.rag_client.query(
+                query=query_text,
+                industry=industry,
+                collections=collections,
+                top_k=5
+            )
             
-            # Query industry insights
-            insights = self.rag_client.query_industry_insights(industry, top_k=3)
+            results = rag_result.get('results', {})
+            
+            # Extract case studies
+            case_studies = results.get('case_studies', [])
+            
+            # Extract services
+            services = results.get('services', [])
+            
+            # Extract industry insights
+            insights = results.get('industry_insights', [])
+            
+            # Extract platforms (The AI Company platforms)
+            platforms = results.get('platforms', [])
+            
+            # Extract company profiles
+            company_profiles = results.get('company_profiles', [])
             
             return {
                 'case_studies': case_studies,
                 'services': services,
-                'insights': insights
+                'insights': insights,
+                'platforms': platforms,
+                'company_profiles': company_profiles,
+                'raw_results': results
             }
         except Exception as e:
             logger.warning(f"Failed to get RAG knowledge: {e}")
             return {
                 'case_studies': [],
                 'services': [],
-                'insights': []
+                'insights': [],
+                'platforms': [],
+                'company_profiles': [],
+                'raw_results': {}
             }
     
     def _get_gemini_insights(self, industry: str) -> Dict[str, Any]:
@@ -174,6 +200,10 @@ class TargetIdentificationService:
             import json
             analysis = json.loads(result_text)
             
+            # Extract relevant knowledge base content for recommendations
+            related_case_studies = [cs.get('metadata', {}).get('title', cs.get('document', '')[:50]) for cs in rag_knowledge.get('case_studies', [])[:3]]
+            relevant_services = [svc.get('metadata', {}).get('service_type', svc.get('document', '')[:50]) for svc in rag_knowledge.get('services', [])[:3]]
+            
             # Parse recommendations
             recommendations = []
             if 'recommendations' in analysis:
@@ -194,7 +224,15 @@ class TargetIdentificationService:
                             recommended_pitch_angle=rec_data.get('recommended_pitch_angle'),
                             pain_points=rec_data.get('pain_points', []),
                             reasoning=rec_data.get('reasoning', ''),
-                            industry=industry
+                            industry=industry,
+                            knowledge_base_context={
+                                'case_studies': rag_knowledge.get('case_studies', [])[:2],
+                                'services': rag_knowledge.get('services', [])[:2],
+                                'insights': rag_knowledge.get('insights', [])[:2],
+                                'platforms': rag_knowledge.get('platforms', [])[:1]
+                            },
+                            related_case_studies=related_case_studies,
+                            relevant_services=relevant_services
                         )
                         recommendations.append(recommendation)
                     except Exception as e:
@@ -424,6 +462,7 @@ def get_target_identification_service() -> TargetIdentificationService:
     if _target_identification_service is None:
         _target_identification_service = TargetIdentificationService()
     return _target_identification_service
+
 
 
 

@@ -20,6 +20,9 @@ class TargetRecommendation(BaseModel):
     pain_points: List[str] = Field(default_factory=list, description="Industry-specific pain points")
     reasoning: str = Field(description="AI explanation with industry context")
     industry: Optional[str] = None
+    knowledge_base_context: Optional[dict] = Field(default=None, description="RAG query results with case studies, services, insights")
+    related_case_studies: Optional[List[str]] = Field(default_factory=list, description="IDs or titles of relevant case studies")
+    relevant_services: Optional[List[str]] = Field(default_factory=list, description="Relevant service names or IDs")
     
     def to_dict(self) -> dict:
         """Convert to dictionary for API response"""
@@ -29,6 +32,7 @@ class TargetRecommendation(BaseModel):
     def from_dict(cls, data: dict) -> 'TargetRecommendation':
         """Create from dictionary"""
         return cls(**data)
+
 
 
 
