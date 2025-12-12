@@ -129,3 +129,5 @@ python scripts/assign_all_industries_to_super_users.py
 - New industries are automatically synced from contacts
 - Super users should maintain all industries unless specifically removing some
 
+
+

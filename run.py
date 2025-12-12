@@ -37,6 +37,11 @@ except Exception:
     pass  # If fix fails, continue anyway
 
 
+def is_docker_environment():
+    """Check if running in Docker container"""
+    return os.path.exists('/.dockerenv') or os.getenv('DOCKER_CONTAINER') == 'true'
+
+
 def kill_existing_processes():
     """Kill any existing Flask and ngrok processes"""
     print("[0/5] Cleaning up existing processes...")
@@ -544,13 +549,17 @@ def start_flask_app(ngrok_url=None):
     print("  FLASK SERVER STARTING")
     print("="*70 + "\n")
     
-    flask_host = os.getenv('FLASK_HOST', '127.0.0.1')
-    flask_port = int(os.getenv('FLASK_PORT', '5000'))
+    # Use PORT environment variable if available (for Docker/Cloud)
+    flask_port = int(os.getenv('PORT', os.getenv('FLASK_PORT', '5000')))
     
-    # For ngrok to connect, Flask must bind to 127.0.0.1 (not 0.0.0.0)
-    # But ensure it's accessible from localhost
-    if flask_host == '0.0.0.0':
-        flask_host = '127.0.0.1'  # ngrok needs 127.0.0.1
+    # In Docker, bind to 0.0.0.0; otherwise use 127.0.0.1 for ngrok
+    if is_docker_environment():
+        flask_host = os.getenv('FLASK_HOST', '0.0.0.0')
+    else:
+        flask_host = os.getenv('FLASK_HOST', '127.0.0.1')
+        # For ngrok to connect, Flask must bind to 127.0.0.1 (not 0.0.0.0)
+        if flask_host == '0.0.0.0':
+            flask_host = '127.0.0.1'  # ngrok needs 127.0.0.1
     
     print(f"Local URL:        http://{flask_host}:{flask_port}")
     print(f"Command Center:   http://{flask_host}:{flask_port}/command-center")
@@ -589,7 +598,10 @@ def start_flask_app(ngrok_url=None):
     flask_thread.start()
     
     # Wait and verify Flask is actually listening on the port
-    print("\n[5/5] Waiting for Flask to start, then starting ngrok...")
+    if is_docker_environment():
+        print("\n[5/5] Waiting for Flask to start (Docker mode - ngrok managed externally)...")
+    else:
+        print("\n[5/5] Waiting for Flask to start, then starting ngrok...")
     print("  Verifying Flask is listening on port...")
     
     for attempt in range(20):  # Wait up to 20 seconds
@@ -643,38 +655,42 @@ def start_flask_app(ngrok_url=None):
             sys.exit(0)
         return
     
-    # Start ngrok - Flask is confirmed accessible
-    print("\nStarting ngrok tunnel...")
-    if not ngrok_url:
-        ngrok_url = start_ngrok_tunnel(flask_port)
-    
-    # Keep checking for ngrok URL
-    max_attempts = 20
-    for attempt in range(max_attempts):
+    # Start ngrok - Flask is confirmed accessible (skip in Docker)
+    if is_docker_environment():
+        print("\n[DOCKER] Skipping ngrok startup - managed externally")
+        # ngrok_url should already be set from environment variable
+    else:
+        print("\nStarting ngrok tunnel...")
         if not ngrok_url:
-            time.sleep(2)
-            # Check ngrok but don't configure webhooks yet (will do after we confirm URL)
-            try:
-                import requests
-                response = requests.get('http://localhost:4040/api/tunnels', timeout=2)
-                if response.status_code == 200:
-                    data = response.json()
-                    tunnels = data.get('tunnels', [])
-                    if tunnels:
-                        http_tunnel = next((t for t in tunnels if t.get('proto') == 'https'), None)
-                        if not http_tunnel:
-                            http_tunnel = next((t for t in tunnels if 'http' in t.get('proto', '')), None)
-                        if http_tunnel:
-                            ngrok_url = http_tunnel.get('public_url')
-            except:
-                pass
-        if ngrok_url:
-            break
-        if attempt < max_attempts - 1:
-            print(f"  Waiting for ngrok... ({attempt + 1}/{max_attempts})")
+            ngrok_url = start_ngrok_tunnel(flask_port)
+        
+        # Keep checking for ngrok URL
+        max_attempts = 20
+        for attempt in range(max_attempts):
+            if not ngrok_url:
+                time.sleep(2)
+                # Check ngrok but don't configure webhooks yet (will do after we confirm URL)
+                try:
+                    import requests
+                    response = requests.get('http://localhost:4040/api/tunnels', timeout=2)
+                    if response.status_code == 200:
+                        data = response.json()
+                        tunnels = data.get('tunnels', [])
+                        if tunnels:
+                            http_tunnel = next((t for t in tunnels if t.get('proto') == 'https'), None)
+                            if not http_tunnel:
+                                http_tunnel = next((t for t in tunnels if 'http' in t.get('proto', '')), None)
+                            if http_tunnel:
+                                ngrok_url = http_tunnel.get('public_url')
+                except:
+                    pass
+            if ngrok_url:
+                break
+            if attempt < max_attempts - 1:
+                print(f"  Waiting for ngrok... ({attempt + 1}/{max_attempts})")
     
-    # Configure webhooks now that we have ngrok URL
-    if ngrok_url:
+    # Configure webhooks now that we have ngrok URL (skip in Docker - webhooks configured externally)
+    if ngrok_url and not is_docker_environment():
         print("\n  [*] Configuring webhooks with ngrok URL...")
         try:
             configure_webhooks_with_url(ngrok_url)
@@ -698,23 +714,28 @@ def start_flask_app(ngrok_url=None):
     print("\n" + "="*70)
     print("  SERVER STATUS")
     print("="*70)
+    if is_docker_environment():
+        print("\n[DOCKER MODE] Running in container")
     print(f"\nLocal URL:        http://{flask_host}:{flask_port}")
     print(f"Command Center:   http://{flask_host}:{flask_port}/command-center")
     
     if ngrok_url:
         print(f"\n✅ PUBLIC URL (Ngrok): {ngrok_url}")
         print(f"   Command Center:     {ngrok_url}/command-center")
-        print("\n📋 Webhook Endpoints:")
-        print(f"   Resend:    {ngrok_url}/api/webhooks/resend")
-        print(f"   Twilio:    {ngrok_url}/api/webhooks/twilio")
-        print(f"   Cal.com:   {ngrok_url}/api/webhooks/cal-com")
-        print("\n💡 Tip: Webhooks are auto-configured when ngrok is detected.")
-        print("   To reconfigure manually: python scripts/configure_webhooks.py")
-    elif expected_url:
+        if not is_docker_environment():
+            print("\n📋 Webhook Endpoints:")
+            print(f"   Resend:    {ngrok_url}/api/webhooks/resend")
+            print(f"   Twilio:    {ngrok_url}/api/webhooks/twilio")
+            print(f"   Cal.com:   {ngrok_url}/api/webhooks/cal-com")
+            print("\n💡 Tip: Webhooks are auto-configured when ngrok is detected.")
+            print("   To reconfigure manually: python scripts/configure_webhooks.py")
+        else:
+            print("\n[DOCKER] Webhooks configured via environment variables")
+    elif expected_url and not is_docker_environment():
         print(f"\n⚠️  Expected URL: {expected_url}")
         print("   Ngrok may still be starting...")
         print("   Check ngrok dashboard: http://localhost:4040")
-    else:
+    elif not is_docker_environment():
         print("\n⚠️  No ngrok URL configured")
         print("   Set WEBHOOK_BASE_URL in .env.local")
     
@@ -819,12 +840,18 @@ def main():
         print("    You may need to run: python scripts/create_database_tables_direct.py\n")
     
     # Step 3: Check ngrok (will start after Flask)
-    ngrok_url = check_ngrok()
-    if not ngrok_url:
-        expected = get_expected_ngrok_url()
-        if expected:
-            print(f"    Expected URL: {expected}")
-        print("    [!] Will start ngrok after Flask starts\n")
+    if is_docker_environment():
+        print("  [DOCKER] Running in container - ngrok managed externally")
+        webhook_url = os.getenv('WEBHOOK_BASE_URL', 'https://vani.ngrok.app')
+        print(f"  [DOCKER] Webhook URL will be: {webhook_url}")
+        ngrok_url = webhook_url
+    else:
+        ngrok_url = check_ngrok()
+        if not ngrok_url:
+            expected = get_expected_ngrok_url()
+            if expected:
+                print(f"    Expected URL: {expected}")
+            print("    [!] Will start ngrok after Flask starts\n")
     
     # Step 4: Start Flask and ngrok
     start_flask_app(ngrok_url=ngrok_url)

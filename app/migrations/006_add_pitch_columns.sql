@@ -23,3 +23,5 @@ ADD COLUMN IF NOT EXISTS sent_channel VARCHAR(50);
 
 
 
+
+

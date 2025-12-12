@@ -246,3 +246,5 @@ python scripts/assign_industries_ai.py             # Execute
 
 
 
+
+

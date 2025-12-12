@@ -407,3 +407,4 @@ def ingest_url():
         logger.error(f"Error ingesting URL: {e}")
         return jsonify({'error': str(e), 'success': False}), 500
 
+

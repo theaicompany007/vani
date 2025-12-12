@@ -110,3 +110,5 @@ if __name__ == '__main__':
     success = assign_all_industries_to_super_users()
     sys.exit(0 if success else 1)
 
+
+

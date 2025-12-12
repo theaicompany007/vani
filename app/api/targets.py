@@ -666,18 +666,39 @@ def delete_target(target_id):
 @require_auth
 @require_use_case('ai_target_finder')
 def ai_identify_targets():
-    """AI-powered target identification from contacts"""
+    """AI-powered target identification from contacts with multiple industries support"""
     try:
         data = request.get_json() or {}
-        industry = data.get('industry')
-        limit = int(data.get('limit', 50))
+        industries = data.get('industries', [])  # Now accepts array
+        industry = data.get('industry')  # Backward compatibility
+        limit = int(data.get('limit', 10))  # Default to 10
         min_seniority = float(data.get('min_seniority', 0.5))
+        preset = data.get('preset', 'custom')  # high_priority, broad_search, c_level_only, custom
+        search_config = data.get('search_config', {})
         
-        if not industry:
-            return jsonify({'error': 'Industry is required'}), 400
+        # Normalize industries: support both single industry (backward compat) and array
+        if not industries and industry:
+            industries = [industry]
+        elif not industries:
+            return jsonify({'error': 'At least one industry is required'}), 400
         
-        # Get current user for industry access control
+        # Apply preset configurations
+        if preset == 'high_priority':
+            min_seniority = 0.7
+            limit = 10
+        elif preset == 'broad_search':
+            min_seniority = 0.3
+            limit = 10
+        elif preset == 'c_level_only':
+            min_seniority = 0.9
+            limit = 10
+        
+        # Get current user for industry access control and saving results
         user = get_current_user()
+        if not user:
+            return jsonify({'error': 'User not authenticated'}), 401
+        
+        user_id = str(user.id) if hasattr(user, 'id') else None
         is_industry_admin = getattr(user, 'is_industry_admin', False) if user else False
         user_industry_id = None
         
@@ -687,27 +708,14 @@ def ai_identify_targets():
             elif hasattr(user, 'active_industry_id') and user.active_industry_id:
                 user_industry_id = str(user.active_industry_id)
         
-        # Industry admin: Only search contacts from their assigned industry
-        if is_industry_admin and user_industry_id:
-            # Validate industry matches user's industry
-            supabase = get_supabase_client(current_app)
-            if supabase:
-                industry_lookup = supabase.table('industries').select('id').ilike('name', f'%{industry}%').limit(1).execute()
-                if industry_lookup.data:
-                    lookup_industry_id = str(industry_lookup.data[0]['id'])
-                    if lookup_industry_id != user_industry_id:
-                        return jsonify({
-                            'error': 'You can only identify targets from your assigned industry'
-                        }), 403
-        
-        # Get contacts from database filtered by industry
+        # Get contacts from database filtered by industries
         supabase = get_supabase_client(current_app)
         if not supabase:
             return jsonify({'error': 'Supabase not configured'}), 503
         
         contacts_query = supabase.table('contacts').select('*, companies(name, industry, domain)')
         
-        # Filter by industry
+        # Filter by industries (OR logic - contact can match any of the selected industries)
         if is_industry_admin and user_industry_id:
             # Get industry name from industry_id
             industry_lookup = supabase.table('industries').select('name').eq('id', user_industry_id).limit(1).execute()
@@ -715,21 +723,59 @@ def ai_identify_targets():
                 industry_name = industry_lookup.data[0]['name']
                 contacts_query = contacts_query.ilike('industry', f'%{industry_name}%')
         else:
-            contacts_query = contacts_query.ilike('industry', f'%{industry}%')
+            # Multiple industries: use OR logic
+            # Supabase doesn't support OR directly, so we'll filter in Python or use multiple queries
+            # For now, use the first industry and filter others in Python
+            if industries:
+                # Try to match any industry (case-insensitive)
+                industry_filter = '|'.join(industries)
+                contacts_query = contacts_query.or_(f'industry.ilike.%{industries[0]}%')
+                # For multiple industries, we'll filter in Python after fetching
         
-        contacts_query = contacts_query.limit(limit * 2)  # Get more to filter
+        contacts_query = contacts_query.limit(limit * 3)  # Get more to filter
         contacts_response = contacts_query.execute()
         
         if not contacts_response.data:
+            # Save empty result
+            if user_id:
+                try:
+                    search_config_data = {
+                        'industries': industries,
+                        'min_seniority': min_seniority,
+                        'limit': limit,
+                        'preset': preset
+                    }
+                    supabase.table('ai_target_search_results').insert({
+                        'user_id': user_id,
+                        'search_config': search_config_data,
+                        'results': [],
+                        'result_count': 0,
+                        'status': 'completed'
+                    }).execute()
+                except Exception as save_error:
+                    logger.warning(f"Failed to save search result: {save_error}")
+            
             return jsonify({
                 'success': True,
                 'recommendations': [],
-                'count': 0
+                'count': 0,
+                'search_id': None
             })
         
-        # Convert to list of dicts
+        # Convert to list of dicts and filter by industries
         contacts = []
         for c in contacts_response.data:
+            contact_industry = (c.get('industry') or '').lower()
+            # Check if contact matches any of the selected industries
+            matches = False
+            for ind in industries:
+                if ind.lower() in contact_industry or contact_industry in ind.lower():
+                    matches = True
+                    break
+            
+            if not matches:
+                continue
+            
             contact_dict = {
                 'id': str(c.get('id', '')),
                 'name': c.get('name', ''),
@@ -746,19 +792,49 @@ def ai_identify_targets():
                     contact_dict['industry'] = c['companies'].get('industry', '')
             contacts.append(contact_dict)
         
-        # Use AI service to identify targets
+        # Use AI service to identify targets (use first industry for context, but results include all)
+        primary_industry = industries[0] if industries else 'general'
         identification_service = get_target_identification_service()
         recommendations = identification_service.identify_targets(
-            industry=industry,
+            industry=primary_industry,
             contacts=contacts,
             limit=limit,
             min_seniority=min_seniority
         )
         
+        # Convert recommendations to dicts for storage
+        recommendations_dicts = [r.to_dict() for r in recommendations]
+        
+        # Save search results to database
+        search_id = None
+        if user_id:
+            try:
+                search_config_data = {
+                    'industries': industries,
+                    'min_seniority': min_seniority,
+                    'limit': limit,
+                    'preset': preset
+                }
+                result = supabase.table('ai_target_search_results').insert({
+                    'user_id': user_id,
+                    'search_config': search_config_data,
+                    'results': recommendations_dicts,
+                    'result_count': len(recommendations),
+                    'status': 'completed'
+                }).execute()
+                
+                if result.data:
+                    search_id = str(result.data[0]['id'])
+            except Exception as save_error:
+                logger.error(f"Failed to save search result: {save_error}")
+                import traceback
+                logger.error(traceback.format_exc())
+        
         return jsonify({
             'success': True,
-            'recommendations': [r.to_dict() for r in recommendations],
-            'count': len(recommendations)
+            'recommendations': recommendations_dicts,
+            'count': len(recommendations),
+            'search_id': search_id
         })
         
     except Exception as e:
@@ -913,6 +989,140 @@ def ai_create_targets():
         
     except Exception as e:
         logger.error(f"Error in AI target creation: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify({'error': str(e)}), 500
+
+
+@targets_bp.route('/api/targets/ai-search-history', methods=['GET'])
+@require_auth
+@require_use_case('ai_target_finder')
+def get_ai_search_history():
+    """Get AI target search history for current user"""
+    try:
+        user = get_current_user()
+        if not user:
+            return jsonify({'error': 'User not authenticated'}), 401
+        
+        user_id = str(user.id) if hasattr(user, 'id') else None
+        if not user_id:
+            return jsonify({'error': 'User ID not found'}), 400
+        
+        # Check if fetching a specific search by ID
+        search_id = request.args.get('search_id')
+        
+        supabase = get_supabase_client(current_app)
+        if not supabase:
+            return jsonify({'error': 'Supabase not configured'}), 503
+        
+        if search_id:
+            # Fetch specific search
+            try:
+                response = supabase.table('ai_target_search_results')\
+                    .select('*')\
+                    .eq('id', search_id)\
+                    .eq('user_id', user_id)\
+                    .execute()
+            except Exception as table_error:
+                error_msg = str(table_error).lower()
+                if 'relation' in error_msg and 'does not exist' in error_msg:
+                    return jsonify({
+                        'error': 'Database table does not exist. Please run migration 016_ai_target_search_results.sql'
+                    }), 404
+                raise
+            
+            if not response.data:
+                return jsonify({'error': 'Search not found'}), 404
+            
+            search = response.data[0]
+            search_config = search.get('search_config', {})
+            search_result = {
+                'id': str(search['id']),
+                'search_config': search_config,
+                'industries': search_config.get('industries', []),
+                'preset': search_config.get('preset', 'custom'),
+                'min_seniority': search_config.get('min_seniority', 0.5),
+                'limit': search_config.get('limit', 10),
+                'result_count': search.get('result_count', 0),
+                'status': search.get('status', 'completed'),
+                'created_at': search.get('created_at'),
+                'results': search.get('results', [])
+            }
+            
+            return jsonify({
+                'success': True,
+                'searches': [search_result]
+            })
+        
+        # Get pagination parameters
+        page = int(request.args.get('page', 1))
+        per_page = int(request.args.get('per_page', 20))
+        offset = (page - 1) * per_page
+        
+        # Fetch search history for user, ordered by most recent first
+        try:
+            response = supabase.table('ai_target_search_results')\
+                .select('*')\
+                .eq('user_id', user_id)\
+                .order('created_at', desc=True)\
+                .range(offset, offset + per_page - 1)\
+                .execute()
+        except Exception as table_error:
+            # Table might not exist - check if it's a relation error
+            error_msg = str(table_error).lower()
+            if 'relation' in error_msg and 'does not exist' in error_msg:
+                logger.warning("ai_target_search_results table does not exist. Migration 016 needs to be run.")
+                return jsonify({
+                    'success': True,
+                    'searches': [],
+                    'total': 0,
+                    'page': page,
+                    'per_page': per_page,
+                    'total_pages': 0,
+                    'message': 'No search history. Run a search to create history. (Note: Database migration may be required)'
+                })
+            raise
+        
+        # Get total count
+        try:
+            count_response = supabase.table('ai_target_search_results')\
+                .select('id', count='exact')\
+                .eq('user_id', user_id)\
+                .execute()
+            
+            total_count = count_response.count if hasattr(count_response, 'count') else (len(response.data) if response.data else 0)
+        except Exception:
+            # If count fails, use length of response data
+            total_count = len(response.data) if response.data else 0
+        
+        # Format results
+        searches = []
+        for search in response.data:
+            search_config = search.get('search_config', {})
+            searches.append({
+                'id': str(search['id']),
+                'search_config': search_config,
+                'industries': search_config.get('industries', []),
+                'preset': search_config.get('preset', 'custom'),
+                'min_seniority': search_config.get('min_seniority', 0.5),
+                'limit': search_config.get('limit', 10),
+                'result_count': search.get('result_count', 0),
+                'status': search.get('status', 'completed'),
+                'created_at': search.get('created_at'),
+                'results': search.get('results', [])  # Include full results for viewing
+            })
+        
+        return jsonify({
+            'success': True,
+            'searches': searches,
+            'total': total_count,
+            'page': page,
+            'per_page': per_page,
+            'total_pages': (total_count + per_page - 1) // per_page
+        })
+        
+    except Exception as e:
+        logger.error(f"Error fetching AI search history: {e}")
         import traceback
         logger.error(traceback.format_exc())
         return jsonify({'error': str(e)}), 500

@@ -81,3 +81,5 @@ EXECUTE FUNCTION ensure_single_default_industry();
 
 
 
+
+

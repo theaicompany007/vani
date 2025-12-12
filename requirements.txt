@@ -51,10 +51,3 @@ flake8==6.1.0
 # Optional: For reading ngrok.yml (optional dependency)
 PyYAML>=6.0
 
-# Excel file parsing for contact import
-openpyxl>=3.1.0
-
-# PDF text extraction for knowledge base
-pdfplumber>=0.10.0
-PyPDF2>=3.0.0
-

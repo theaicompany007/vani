@@ -6,20 +6,20 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=YOUR_USERNAME
-Group=YOUR_USERNAME
-WorkingDirectory=/opt/vani
+User=postgres
+Group=postgres
+WorkingDirectory=/home/postgres/vani
 
 # Environment
-Environment="PATH=/opt/vani/venv/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PATH=/home/postgres/vani/venv/bin:/usr/local/bin:/usr/bin:/bin"
 Environment="PYTHONUNBUFFERED=1"
 Environment="PYTHONDONTWRITEBYTECODE=1"
 
 # Load environment variables from .env.local
-EnvironmentFile=/opt/vani/.env.local
+EnvironmentFile=/home/postgres/vani/.env.local
 
 # Start Flask application
-ExecStart=/opt/vani/venv/bin/python /opt/vani/run.py
+ExecStart=/home/postgres/vani/venv/bin/python /home/postgres/vani/run.py
 
 # Restart policy
 Restart=always
@@ -37,7 +37,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/opt/vani/logs /opt/vani/data
+ReadWritePaths=/home/postgres/vani/logs /home/postgres/vani/data
 
 # Resource limits
 LimitNOFILE=65536

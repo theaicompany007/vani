@@ -65,3 +65,5 @@ WHERE trigger_name = 'trigger_ensure_single_default_industry';
 
 
 
+
+
