@@ -580,7 +580,8 @@ def start_flask_app(ngrok_url=None):
             flask_app = create_app(debug=os.getenv('DEBUG', 'True').lower() == 'true')
             
             # Create server that can be shut down
-            server = make_server('127.0.0.1', flask_port, flask_app, threaded=True)
+            # Use flask_host (0.0.0.0 in Docker, 127.0.0.1 locally)
+            server = make_server(flask_host, flask_port, flask_app, threaded=True)
             flask_shutdown = server.shutdown
             
             flask_started.set()
