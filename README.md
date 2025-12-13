@@ -36,6 +36,7 @@ Copy-Item .env.example .env.local
 **Optional but recommended:**
 - RAG_API_KEY (for Knowledge Base and enhanced AI Target Finder)
 - GEMINI_API_KEY (for Notebook LM integration in AI Target Finder)
+- AI_PROVIDER_PRIORITY (default: "gemini,openai" - controls which AI provider to use first for target analysis)
 
 ### 3. Setup Database
 
@@ -48,8 +49,48 @@ Run the SQL migrations in Supabase:
 python scripts\run_all_migrations.py
 ```
 
+### 4. Start VANI (Local Windows Development)
+
+**Option A: Using vani.bat (Recommended)**
+```cmd
+vani.bat
+```
+
+**Option B: Manual**
+```cmd
+venv\Scripts\activate.bat
+python run.py
+```
+
+### 5. Start Ngrok (For Webhooks)
+
+**Option A: Using start-ngrok.bat**
+```cmd
+start-ngrok.bat
+```
+
+**Option B: Using PowerShell Script**
+```powershell
+.\scripts\start_ngrok.ps1
+```
+
+**Option C: Manual**
+```cmd
+ngrok http 5000 --domain=vani-dev.ngrok.app
+```
+
+**Note**: For local development, use `vani-dev.ngrok.app`. Make sure to reserve this domain in the ngrok dashboard first: https://dashboard.ngrok.com/cloud-edge/domains
+
+📖 **See [LOCAL_WINDOWS_DEVELOPMENT.md](LOCAL_WINDOWS_DEVELOPMENT.md) for detailed local development guide.**
+
 ### 4. Run the Application
 
+**Windows (No Docker):**
+```cmd
+vani.bat
+```
+
+**Manual:**
 ```powershell
 python run.py
 ```
@@ -57,11 +98,22 @@ python run.py
 The script will:
 - Check environment variables
 - Verify database connection
-- Start ngrok tunnel (if configured)
+- Detect ngrok tunnel (if running)
 - Display public URL for webhooks
 - Start Flask server
 
-Open: http://localhost:5000/command-center
+**Access VANI:**
+- Local: http://localhost:5000/command-center
+- Public: https://vani-dev.ngrok.app/command-center (after starting ngrok)
+
+**Start Ngrok (separate terminal):**
+```cmd
+start-ngrok.bat
+# OR
+.\scripts\start_ngrok.ps1
+```
+
+📖 **For detailed local Windows development setup, see [LOCAL_WINDOWS_DEVELOPMENT.md](LOCAL_WINDOWS_DEVELOPMENT.md)**
 
 ## 📋 Features
 
@@ -157,6 +209,7 @@ See `.env.example` for all required variables. Key ones:
 - `RAG_API_KEY` - RAG service API key (for Knowledge Base and enhanced AI Target Finder)
 - `RAG_SERVICE_URL` - RAG service URL (default: https://rag.kcube-consulting.com)
 - `GEMINI_API_KEY` - Google Gemini API key (for Notebook LM integration)
+- `AI_PROVIDER_PRIORITY` - AI provider priority order (default: "gemini,openai"). Options: "gemini,openai" or "openai,gemini"
 - `NOTIFICATION_EMAIL` - Your email for HIT alerts
 - `NOTIFICATION_WHATSAPP` - Your WhatsApp number for HIT alerts
 - `WEBHOOK_BASE_URL` - https://vani.ngrok.app (your ngrok URL)
@@ -288,6 +341,8 @@ flake8 app/
 - `scripts/check_user_permissions.py` - Check user permissions
 - `scripts/assign_all_industries_to_super_users.py` - Assign all industries to super users
 - `scripts/sync_industries_from_contacts.py` - Sync industries from contacts table
+- `scripts/test_gemini_credentials.py` - Test and validate Gemini API key
+- `scripts/list_gemini_models.py` - List all available Gemini models for your API key
 
 ## 📝 Notes
 
@@ -296,7 +351,7 @@ flake8 app/
 - All webhooks require ngrok tunnel for local development
 - OpenAI message generation uses `gpt-4o-mini` by default (configurable)
 - Knowledge Base requires RAG_API_KEY for full functionality
-- AI Target Finder works with OpenAI alone, but RAG and Gemini enhance results
+- AI Target Finder uses Gemini by default (configurable via AI_PROVIDER_PRIORITY), with OpenAI as fallback. RAG and Gemini enhance results with knowledge base context.
 
 ## 🚨 Troubleshooting
 
@@ -319,6 +374,70 @@ flake8 app/
 - Verify OPENAI_API_KEY is set (required)
 - RAG_API_KEY is optional but recommended for enhanced results
 - Check `run.py` output for feature availability status
+
+### Gemini API Key Errors
+If you see errors like "API key not valid" or "API_KEY_INVALID":
+
+1. **Test your API key (recommended):**
+   ```powershell
+   python scripts/test_gemini_credentials.py
+   ```
+
+2. **Test API key directly with REST API:**
+   ```powershell
+   python scripts/test_gemini_api_key_direct.py
+   ```
+   
+   This uses the same REST API endpoint as curl, so it will catch the same errors.
+
+2. **Verify API key format:**
+   - Should start with `AIza`
+   - Length: ~39 characters (35-45 is acceptable)
+   - Get a new key from: https://aistudio.google.com/app/apikey
+
+3. **Common issues:**
+   - API key expired or revoked → Get a new key
+   - Incorrect format → Check for extra spaces or truncation
+   - API key not set → Verify `GEMINI_API_KEY` in `.env.local`
+   - Billing/quota issues → Check Google Cloud Console
+
+4. **Fallback behavior:**
+   - If Gemini fails, the system automatically falls back to OpenAI (if configured)
+   - Check logs for which provider is being used
+   - Set `AI_PROVIDER_PRIORITY=openai,gemini` to prioritize OpenAI
+
+### Gemini Model Not Found Errors
+If you see errors like "404 models/gemini-1.5-pro is not found":
+
+1. **The system automatically tries fallback models:**
+   - Default: `gemini-1.5-flash` (recommended, fast and widely available)
+   - Fallbacks: `gemini-pro`, `gemini-1.5-pro-latest`, `gemini-2.0-flash-exp`
+   - The system will automatically use the first available model
+
+2. **Manually set a model:**
+   ```powershell
+   # In .env.local
+   GEMINI_MODEL=gemini-1.5-flash  # or gemini-pro
+   ```
+
+3. **List available models:**
+   ```powershell
+   python scripts/list_gemini_models.py
+   ```
+   
+   Or programmatically:
+   ```python
+   import google.generativeai as genai
+   genai.configure(api_key='YOUR_KEY')
+   for model in genai.list_models():
+       if 'generateContent' in model.supported_generation_methods:
+           print(model.name)
+   ```
+
+4. **Common model names:**
+   - `gemini-1.5-flash` - Fast, efficient (default)
+   - `gemini-pro` - Stable, widely available
+   - `gemini-1.5-pro-latest` - Latest pro version (if available)
 
 ### Knowledge Base Not Working
 - Verify RAG_API_KEY is set

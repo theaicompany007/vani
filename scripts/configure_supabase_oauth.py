@@ -77,8 +77,14 @@ def get_app_url() -> Optional[str]:
     
     return None
 
-def configure_supabase_oauth(app_url: str):
-    """Configure Supabase OAuth URL configuration"""
+def configure_supabase_oauth(app_url: str, environment: str = 'dev'):
+    """
+    Configure Supabase OAuth URL configuration with environment-aware safety checks
+    
+    Args:
+        app_url: Application URL (e.g., https://vani.ngrok.app)
+        environment: 'dev' or 'prod' - determines if updates are safe
+    """
     if not SUPABASE_URL:
         print("❌ Error: SUPABASE_URL not found in .env.local or .local.env")
         print(f"   Checked files: {', '.join(env_files_checked) if env_files_checked else 'none found'}")
@@ -92,6 +98,7 @@ def configure_supabase_oauth(app_url: str):
     print("  CONFIGURING SUPABASE OAUTH URLS")
     print("="*70)
     print(f"Project: {project_ref}")
+    print(f"Environment: {environment.upper()}")
     print(f"App URL: {app_url}\n")
     
     # Required redirect URLs for OAuth
@@ -132,6 +139,33 @@ def configure_supabase_oauth(app_url: str):
                 'Authorization': f'Bearer {SUPABASE_ACCESS_TOKEN}',
                 'Content-Type': 'application/json'
             }
+            
+            # First, fetch current configuration to check if update is safe
+            get_response = requests.get(api_url, headers=headers, timeout=10)
+            current_site_url = None
+            current_uri_allow_list = None
+            
+            if get_response.status_code == 200:
+                current_config = get_response.json()
+                current_site_url = current_config.get('site_url', '')
+                current_uri_allow_list = current_config.get('uri_allow_list', '')
+                
+                # Check if current site_url is for different environment
+                if current_site_url:
+                    current_lower = current_site_url.lower()
+                    app_lower = app_url.lower()
+                    is_current_dev = 'vani-dev.ngrok' in current_lower
+                    is_current_prod = 'vani.ngrok' in current_lower and 'vani-dev' not in current_lower
+                    is_target_dev = 'vani-dev.ngrok' in app_lower
+                    is_target_prod = 'vani.ngrok' in app_lower and 'vani-dev' not in app_lower
+                    
+                    # Warn if trying to overwrite different environment
+                    if (is_current_dev and is_target_prod) or (is_current_prod and is_target_dev):
+                        print(f"⚠️  WARNING: Current site_url ({current_site_url}) is for different environment")
+                        print(f"   Target URL ({app_url}) would overwrite production configuration")
+                        print(f"   Skipping automatic update to prevent overwrite")
+                        print(f"   Please update manually in Supabase Dashboard if needed")
+                        return False
             
             # Format redirect URLs as comma-separated string
             uri_allow_list = ','.join(redirect_urls)

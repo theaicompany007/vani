@@ -11,14 +11,57 @@ industries_bp = Blueprint('industries', __name__)
 @industries_bp.route('/api/industries', methods=['GET'])
 @require_auth
 def list_industries():
+    """List industries - filtered by user's assigned industries for all users (including super users)"""
     supabase = get_supabase_auth_client()
     if not supabase:
         return jsonify({'error': 'Authentication service unavailable'}), 503
+    
+    user = get_current_user()
+    if not user:
+        return jsonify({'error': 'User not authenticated'}), 401
+    
     try:
-        response = supabase.table('industries').select('*').order('name', desc=False).execute()
+        # Check if 'all' parameter is requested (for admin purposes only)
+        show_all = request.args.get('all', 'false').lower() == 'true'
+        is_super_user = getattr(user, 'is_super_user', False)
+        
+        # Only show all industries if explicitly requested AND user is super user
+        if show_all and is_super_user:
+            response = supabase.table('industries').select('*').order('name', desc=False).execute()
+            return jsonify({'success': True, 'industries': response.data})
+        
+        # For all users (including super users), show only assigned industries
+        supabase_db = get_supabase_client(current_app)
+        if not supabase_db:
+            return jsonify({'error': 'Database service unavailable'}), 503
+        
+        # Get user's assigned industries from user_industries table
+        assigned_industry_ids = []
+        try:
+            user_industries_response = supabase_db.table('user_industries').select('industry_id').eq('user_id', user.id).execute()
+            if user_industries_response.data:
+                assigned_industry_ids = [str(ui['industry_id']) for ui in user_industries_response.data]
+        except Exception as e:
+            # Fallback to legacy industry_id if user_industries table doesn't exist
+            error_str = str(e)
+            if 'PGRST205' in error_str or 'user_industries' in error_str.lower():
+                if hasattr(user, 'industry_id') and user.industry_id:
+                    assigned_industry_ids.append(str(user.industry_id))
+            else:
+                raise
+        
+        if not assigned_industry_ids:
+            # User has no industries assigned
+            return jsonify({'success': True, 'industries': []})
+        
+        # Get industry details for assigned industries
+        response = supabase.table('industries').select('*').in_('id', assigned_industry_ids).order('name', desc=False).execute()
         return jsonify({'success': True, 'industries': response.data})
+            
     except Exception as e:
         logger.error(f"Error listing industries: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
 
 @industries_bp.route('/api/industries/<uuid:industry_id>', methods=['GET'])

@@ -74,6 +74,191 @@ class CalComClient:
                 'error': str(e)
             }
     
+    def create_booking(
+        self,
+        start_time: datetime,
+        attendee_email: str,
+        event_type_id: Optional[int] = None,
+        end_time: Optional[datetime] = None,
+        attendee_name: Optional[str] = None,
+        notes: Optional[str] = None,
+        timezone: str = 'UTC'
+    ) -> Dict[str, Any]:
+        """
+        Create a booking via Cal.com API
+        
+        Args:
+            event_type_id: Cal.com event type ID
+            start_time: Meeting start time
+            end_time: Meeting end time (optional, defaults to start_time + duration)
+            attendee_email: Attendee email address
+            attendee_name: Attendee name
+            notes: Additional notes
+            timezone: Timezone (default: UTC)
+            
+        Returns:
+            Response dict with booking details
+        """
+        try:
+            # Calculate end_time if not provided (default 30 minutes)
+            if not end_time:
+                from datetime import timedelta
+                end_time = start_time + timedelta(minutes=30)
+            
+            # Prepare booking payload
+            payload = {
+                'eventTypeId': event_type_id,
+                'start': start_time.isoformat(),
+                'end': end_time.isoformat(),
+                'responses': {
+                    'email': attendee_email,
+                    'name': attendee_name or attendee_email,
+                    'notes': notes or ''
+                },
+                'timeZone': timezone,
+                'language': 'en'
+            }
+            
+            # Remove None values
+            payload = {k: v for k, v in payload.items() if v is not None}
+            
+            url = f"{self.base_url}/v1/bookings"
+            response = requests.post(url, json=payload, headers=self.headers, timeout=30)
+            response.raise_for_status()
+            
+            booking_data = response.json()
+            
+            return {
+                'success': True,
+                'booking': booking_data,
+                'booking_id': booking_data.get('id'),
+                'meeting_url': booking_data.get('meetingUrl') or booking_data.get('meeting_url'),
+                'booking_url': booking_data.get('bookingUrl') or booking_data.get('booking_url')
+            }
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Cal.com API error creating booking: {e}")
+            if hasattr(e, 'response') and e.response is not None:
+                try:
+                    error_detail = e.response.json()
+                    return {
+                        'success': False,
+                        'error': error_detail.get('message', str(e)),
+                        'details': error_detail
+                    }
+                except:
+                    return {
+                        'success': False,
+                        'error': f"HTTP {e.response.status_code}: {e.response.text}"
+                    }
+            return {
+                'success': False,
+                'error': str(e)
+            }
+        except Exception as e:
+            logger.error(f"Failed to create booking: {str(e)}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
+    def get_available_slots(
+        self,
+        event_type_id: Optional[int] = None,
+        date_from: Optional[datetime] = None,
+        date_to: Optional[datetime] = None
+    ) -> Dict[str, Any]:
+        """
+        Get available time slots for booking
+        
+        Args:
+            event_type_id: Cal.com event type ID
+            date_from: Start date for availability
+            date_to: End date for availability
+            
+        Returns:
+            Response dict with available slots
+        """
+        try:
+            # Use Cal.com availability endpoint
+            url = f"{self.base_url}/v1/availability"
+            params = {}
+            
+            if event_type_id:
+                params['eventTypeId'] = event_type_id
+            if date_from:
+                params['dateFrom'] = date_from.isoformat()
+            if date_to:
+                params['dateTo'] = date_to.isoformat()
+            
+            response = requests.get(url, headers=self.headers, params=params, timeout=30)
+            response.raise_for_status()
+            
+            return {
+                'success': True,
+                'slots': response.json()
+            }
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Cal.com API error getting available slots: {e}")
+            # If API endpoint doesn't exist, return empty slots (user can manually select time)
+            return {
+                'success': True,
+                'slots': [],
+                'note': 'Availability API not available, please select time manually'
+            }
+        except Exception as e:
+            logger.error(f"Failed to get available slots: {str(e)}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
+    def cancel_booking(self, booking_id: str) -> Dict[str, Any]:
+        """
+        Cancel a booking
+        
+        Args:
+            booking_id: Cal.com booking ID
+            
+        Returns:
+            Response dict with cancellation status
+        """
+        try:
+            url = f"{self.base_url}/v1/bookings/{booking_id}"
+            response = requests.delete(url, headers=self.headers, timeout=30)
+            response.raise_for_status()
+            
+            return {
+                'success': True,
+                'message': 'Booking cancelled successfully'
+            }
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Cal.com API error cancelling booking: {e}")
+            if hasattr(e, 'response') and e.response is not None:
+                try:
+                    error_detail = e.response.json()
+                    return {
+                        'success': False,
+                        'error': error_detail.get('message', str(e))
+                    }
+                except:
+                    return {
+                        'success': False,
+                        'error': f"HTTP {e.response.status_code}: {e.response.text}"
+                    }
+            return {
+                'success': False,
+                'error': str(e)
+            }
+        except Exception as e:
+            logger.error(f"Failed to cancel booking: {str(e)}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
     def get_bookings(
         self,
         start_time: Optional[datetime] = None,

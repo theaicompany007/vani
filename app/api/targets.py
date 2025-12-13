@@ -106,7 +106,24 @@ def list_targets():
                     logger.debug(f"Target {target_dict.get('company_name', 'Unknown')}: No industry_id found (target.industry_id={target_dict.get('industry_id')}, contact={bool(t.get('contacts'))}, company={bool(t.get('companies'))})")
                 
                 # Apply industry filter
-                if is_industry_admin and user_industry_id:
+                if is_super_user:
+                    # Super users: Show all targets unless industry_param is specified
+                    if industry_param:
+                        # Super user with manual industry filter: Check if target matches
+                        if target_industry_id:
+                            # Check if target's industry_id matches the requested industry
+                            if str(target_industry_id) != str(industry_param):
+                                logger.debug(f"Target {target_dict.get('company_name', 'Unknown')}: Skipped - industry_id mismatch (target={target_industry_id}, requested={industry_param})")
+                                continue
+                        else:
+                            # If no industry_id on target and super user requested specific industry, skip
+                            logger.debug(f"Target {target_dict.get('company_name', 'Unknown')}: Skipped - no industry_id (super user requested industry={industry_param})")
+                            continue
+                        logger.debug(f"Target {target_dict.get('company_name', 'Unknown')}: PASSED super user filter with industry_param (industry_id={target_industry_id})")
+                    else:
+                        # Super user without industry filter: Show all targets
+                        logger.debug(f"Target {target_dict.get('company_name', 'Unknown')}: PASSED super user filter (no industry filter, showing all)")
+                elif is_industry_admin and user_industry_id:
                     # Industry admin: Must match their industry
                     if not target_industry_id:
                         logger.debug(f"Target {target_dict.get('company_name', 'Unknown')}: Skipped - no industry_id (industry admin filter)")
@@ -115,23 +132,13 @@ def list_targets():
                         logger.debug(f"Target {target_dict.get('company_name', 'Unknown')}: Skipped - industry_id mismatch (target={target_industry_id}, user={user_industry_id})")
                         continue
                     logger.debug(f"Target {target_dict.get('company_name', 'Unknown')}: PASSED industry admin filter (industry_id={target_industry_id})")
-                elif is_super_user and industry_param:
-                    # Super user with manual filter: Check if matches
-                    if target_industry_id:
-                        industry_lookup = supabase.table('industries').select('name').eq('id', target_industry_id).limit(1).execute()
-                        if industry_lookup.data:
-                            industry_name = industry_lookup.data[0]['name']
-                            if industry_param.lower() not in industry_name.lower():
-                                continue
-                    else:
-                        # If no industry_id on target, skip (super user with manual filter wants specific industry)
-                        continue
                 elif user_industry_id:
-                    # User (including super user) with active_industry_id: Filter by active industry
-                    # Super users can still filter by active industry for convenience
+                    # Regular user with active_industry_id: Filter by active industry
                     # Only show targets that have industry_id matching active industry
                     if not target_industry_id or target_industry_id != user_industry_id:
+                        logger.debug(f"Target {target_dict.get('company_name', 'Unknown')}: Skipped - industry_id mismatch (target={target_industry_id}, user={user_industry_id})")
                         continue
+                    logger.debug(f"Target {target_dict.get('company_name', 'Unknown')}: PASSED regular user filter (industry_id={target_industry_id})")
                 
                 # Enrich with contact/company data if linked
                 if target_dict.get('contact_id'):
@@ -662,6 +669,71 @@ def delete_target(target_id):
         return jsonify({'error': str(e)}), 500
 
 
+@targets_bp.route('/api/targets/ai-identify/report', methods=['POST'])
+@require_auth
+@require_use_case('ai_target_finder')
+def ai_identify_targets_report():
+    """Generate detailed B2B sales analysis report from AI recommendations"""
+    try:
+        data = request.get_json() or {}
+        industries = data.get('industries', [])
+        industry = data.get('industry')
+        limit = int(data.get('limit', 10))
+        min_seniority = float(data.get('min_seniority', 0.5))
+        preset = data.get('preset', 'custom')
+        
+        # Normalize industries
+        if not industries and industry:
+            industries = [industry]
+        elif not industries:
+            return jsonify({'error': 'At least one industry is required'}), 400
+        
+        # Get current user
+        user = get_current_user()
+        if not user:
+            return jsonify({'error': 'User not authenticated'}), 401
+        
+        # Get contacts (reuse the same logic as ai_identify_targets)
+        # For simplicity, we'll call the identify endpoint internally or reuse logic
+        # For now, let's create a simplified version that generates report from search_id
+        
+        search_id = data.get('search_id')
+        if not search_id:
+            return jsonify({'error': 'search_id is required to generate report'}), 400
+        
+        # Fetch saved search results
+        supabase = get_supabase_client(current_app)
+        if not supabase:
+            return jsonify({'error': 'Supabase not configured'}), 503
+        
+        search_result = supabase.table('ai_target_search_results').select('*').eq('id', search_id).limit(1).execute()
+        if not search_result.data:
+            return jsonify({'error': 'Search results not found'}), 404
+        
+        saved_results = search_result.data[0]
+        recommendations = saved_results.get('results', [])
+        search_config = saved_results.get('search_config', {})
+        primary_industry = search_config.get('industries', [industries[0] if industries else 'general'])[0]
+        
+        # Generate report
+        from app.services.recommendation_report_generator import generate_recommendation_report
+        report = generate_recommendation_report(
+            recommendations=recommendations,
+            industry=primary_industry,
+            search_config=search_config
+        )
+        
+        return jsonify({
+            'success': True,
+            'report': report,
+            'search_id': search_id,
+            'format': 'markdown'
+        })
+    except Exception as e:
+        logger.error(f"Error generating report: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
 @targets_bp.route('/api/targets/ai-identify', methods=['POST'])
 @require_auth
 @require_use_case('ai_target_finder')
@@ -675,6 +747,7 @@ def ai_identify_targets():
         min_seniority = float(data.get('min_seniority', 0.5))
         preset = data.get('preset', 'custom')  # high_priority, broad_search, c_level_only, custom
         search_config = data.get('search_config', {})
+        exclude_processed = data.get('exclude_processed', True)  # Default: exclude processed contacts
         
         # Normalize industries: support both single industry (backward compat) and array
         if not industries and industry:
@@ -700,6 +773,7 @@ def ai_identify_targets():
         
         user_id = str(user.id) if hasattr(user, 'id') else None
         is_industry_admin = getattr(user, 'is_industry_admin', False) if user else False
+        is_super_user = getattr(user, 'is_super_user', False) if user else False
         user_industry_id = None
         
         if user:
@@ -713,7 +787,17 @@ def ai_identify_targets():
         if not supabase:
             return jsonify({'error': 'Supabase not configured'}), 503
         
+        # Query contacts with company information
+        # Also join companies table to get industry from company if contact doesn't have it
         contacts_query = supabase.table('contacts').select('*, companies(name, industry, domain)')
+        
+        # Filter out processed contacts if exclude_processed is True
+        if exclude_processed:
+            # Exclude contacts that are already targets
+            contacts_query = contacts_query.eq('is_target', False)
+            logger.debug(f"Excluding processed contacts (is_target=false)")
+        
+        logger.debug(f"Initial query: filtering for industries={industries}, exclude_processed={exclude_processed}")
         
         # Filter by industries (OR logic - contact can match any of the selected industries)
         if is_industry_admin and user_industry_id:
@@ -722,20 +806,188 @@ def ai_identify_targets():
             if industry_lookup.data:
                 industry_name = industry_lookup.data[0]['name']
                 contacts_query = contacts_query.ilike('industry', f'%{industry_name}%')
-        else:
-            # Multiple industries: use OR logic
-            # Supabase doesn't support OR directly, so we'll filter in Python or use multiple queries
-            # For now, use the first industry and filter others in Python
-            if industries:
-                # Try to match any industry (case-insensitive)
-                industry_filter = '|'.join(industries)
-                contacts_query = contacts_query.or_(f'industry.ilike.%{industries[0]}%')
-                # For multiple industries, we'll filter in Python after fetching
+        elif industries:
+            # For super users or multiple industries: use first industry for initial filter
+            # Then filter the rest in Python for better matching
+            if len(industries) == 1:
+                # Single industry: use direct filter with flexible matching
+                industry_name = industries[0].strip()
+                # Use ilike for case-insensitive partial matching
+                # This should match "retail" when searching for "Retail"
+                contacts_query = contacts_query.ilike('industry', f'%{industry_name}%')
+                logger.debug(f"Filtering contacts by single industry: {industry_name} (case-insensitive ilike)")
+            else:
+                # Multiple industries: Don't filter at query level, fetch all and filter in Python
+                # This ensures we get contacts matching ANY of the selected industries
+                logger.debug(f"Multiple industries selected: {industries}. Will fetch all contacts and filter in Python.")
+                # This ensures we get contacts that match ANY of the selected industries
+                logger.debug(f"Multiple industries selected: {industries}. Will fetch all contacts and filter in Python.")
+                # Don't add industry filter - we'll filter in Python to match any industry
         
-        contacts_query = contacts_query.limit(limit * 3)  # Get more to filter
+        # Increase limit significantly to ensure we get enough contacts, especially for single industry searches
+        # For single industry, fetch more to account for potential mismatches in database
+        if len(industries) == 1:
+            fetch_limit = max(limit * 10, 500)  # At least 500 contacts for single industry search
+        else:
+            fetch_limit = limit * 5 if (is_super_user or len(industries) > 1) else limit * 3
+        contacts_query = contacts_query.limit(fetch_limit)
+        logger.debug(f"Set fetch_limit to {fetch_limit} for industries={industries}")
+        
+        logger.debug(f"Executing contacts query with limit={fetch_limit}, industries={industries}")
         contacts_response = contacts_query.execute()
         
+        logger.debug(f"Query executed: fetched {len(contacts_response.data) if contacts_response.data else 0} contacts")
+        
+        # Check if the fetched contacts actually match the industry (for debugging)
+        if contacts_response.data and industries and len(industries) == 1:
+            matching_count = 0
+            sample_industries = set()
+            for c in contacts_response.data[:10]:  # Check first 10
+                industry_val = (c.get('industry') or '').strip().lower()
+                if c.get('companies') and c['companies'].get('industry'):
+                    company_industry = (c['companies'].get('industry') or '').strip().lower()
+                    if not industry_val:
+                        industry_val = company_industry
+                if industry_val:
+                    sample_industries.add(industry_val)
+                    if industries[0].strip().lower() in industry_val or industry_val in industries[0].strip().lower():
+                        matching_count += 1
+            logger.debug(f"Sample industries from fetched contacts: {sorted(list(sample_industries))}")
+            logger.debug(f"Contacts matching '{industries[0]}' in first 10: {matching_count}/10")
+        
+        # If no results from initial query, try a fallback: search without industry filter and filter in Python
+        # This helps when industry names don't match exactly in the database
+        if not contacts_response.data and industries and len(industries) == 1:
+            logger.warning(f"No contacts found with industry filter for '{industries[0]}'. Trying broader search without industry filter...")
+            # Try fetching without industry filter
+            fallback_query = supabase.table('contacts').select('*, companies(name, industry, domain)')
+            if exclude_processed:
+                fallback_query = fallback_query.eq('is_target', False)
+            fallback_query = fallback_query.limit(fetch_limit * 2)  # Get more for filtering
+            fallback_response = fallback_query.execute()
+            if fallback_response.data:
+                logger.warning(f"Fallback query found {len(fallback_response.data)} contacts. Will filter in Python for industry '{industries[0]}'.")
+                contacts_response = fallback_response
+        
+        # If no results and we're filtering by industry, try a broader search for debugging
+        if not contacts_response.data and industries:
+            logger.warning(f"No contacts found with initial query for industries: {industries}")
+            logger.warning("Trying broader search to check if contacts exist...")
+            # Try fetching without industry filter to see if contacts exist
+            # For multiple industries, fetch more contacts for Python-side filtering
+            fetch_limit_broad = max(fetch_limit * 3, 1000) if len(industries) > 1 else fetch_limit * 2
+            broad_query = supabase.table('contacts').select('*, companies(name, industry, domain)').limit(fetch_limit_broad)
+            if exclude_processed:
+                broad_query = broad_query.eq('is_target', False)
+            broad_response = broad_query.execute()
+            if broad_response.data:
+                logger.warning(f"Found {len(broad_response.data)} contacts without industry filter")
+                # Check what industries are actually in the database
+                industries_found = set()
+                for c in broad_response.data[:50]:  # Check first 50
+                    industry_val = c.get('industry') or ''
+                    if c.get('companies') and c['companies'].get('industry'):
+                        industry_val = industry_val or c['companies'].get('industry', '')
+                    if industry_val:
+                        industries_found.add(industry_val)
+                logger.warning(f"Sample industries in database: {sorted(list(industries_found))[:20]}")
+                # Check if any match the requested industry with flexible matching
+                requested_lower = [ind.lower().strip() for ind in industries]
+                matches_found = []
+                
+                # More flexible matching: check for partial matches, word matches, and normalized variations
+                for ind in industries_found:
+                    ind_lower = ind.lower().strip()
+                    ind_normalized = ind_lower.replace('&', 'and').replace(',', ' ').replace('  ', ' ').strip()
+                    
+                    for req in requested_lower:
+                        req_normalized = req.replace('&', 'and').replace(',', ' ').replace('  ', ' ').strip()
+                        
+                        # Check multiple matching strategies
+                        match_found = (
+                            req in ind_lower or  # Exact substring
+                            ind_lower in req or  # Reverse substring
+                            req_normalized in ind_normalized or  # Normalized substring
+                            ind_normalized in req_normalized or  # Reverse normalized
+                            any(word in ind_lower for word in req.split() if len(word) > 3) or  # Word matching (words > 3 chars)
+                            any(word in req for word in ind_lower.split() if len(word) > 3)  # Reverse word matching
+                        )
+                        
+                        if match_found:
+                            matches_found.append(ind)
+                            break
+                
+                if matches_found:
+                    logger.warning(f"Found matching industries in database: {matches_found}")
+                    # Use the broad query results for Python-side filtering
+                    logger.warning(f"Will filter {len(broad_response.data)} contacts in Python for industries: {industries}")
+                    contacts_response = broad_response
+                else:
+                    # Even if no exact matches found, still use broad query for Python-side filtering
+                    # Python filtering is more flexible and may find matches
+                    logger.warning(f"No exact matches found, but will still filter {len(broad_response.data)} contacts in Python for flexible matching")
+                    logger.warning(f"Requested industries {industries} - Python filtering will attempt flexible matching")
+                    contacts_response = broad_response
+            else:
+                logger.warning("No contacts found in database at all (even without filters)")
+        
+        # Count excluded contacts for user feedback
+        excluded_count = 0
+        if exclude_processed:
+            # Get count of excluded contacts (already targets)
+            excluded_query = supabase.table('contacts').select('id', count='exact')
+            if is_industry_admin and user_industry_id:
+                industry_lookup = supabase.table('industries').select('name').eq('id', user_industry_id).limit(1).execute()
+                if industry_lookup.data:
+                    industry_name = industry_lookup.data[0]['name']
+                    excluded_query = excluded_query.ilike('industry', f'%{industry_name}%')
+            elif industries:
+                excluded_query = excluded_query.ilike('industry', f'%{industries[0]}%')
+            excluded_query = excluded_query.eq('is_target', True)
+            excluded_result = excluded_query.execute()
+            excluded_count = excluded_result.count if hasattr(excluded_result, 'count') else 0
+        
         if not contacts_response.data:
+            # Try a diagnostic query to see what's in the database
+            logger.warning(f"No contacts found for industries: {industries}")
+            logger.warning("Running diagnostic query...")
+            
+            # Check total contacts
+            total_query = supabase.table('contacts').select('id', count='exact')
+            if exclude_processed:
+                total_query = total_query.eq('is_target', False)
+            total_result = total_query.execute()
+            total_count = total_result.count if hasattr(total_result, 'count') else len(total_result.data) if total_result.data else 0
+            logger.warning(f"Total contacts in database (is_target=false): {total_count}")
+            
+            # Check sample industries from contacts
+            sample_query = supabase.table('contacts').select('industry').limit(100)
+            if exclude_processed:
+                sample_query = sample_query.eq('is_target', False)
+            sample_result = sample_query.execute()
+            if sample_result.data:
+                industries_found = set()
+                for c in sample_result.data:
+                    industry_val = c.get('industry') or ''
+                    if industry_val:
+                        industries_found.add(industry_val)
+                logger.warning(f"Sample industries found in contacts: {sorted(list(industries_found))[:20]}")
+                
+                # Check for Retail specifically
+                retail_contacts = [c for c in sample_result.data if c.get('industry') and 'retail' in c.get('industry', '').lower()]
+                logger.warning(f"Contacts with 'retail' in industry (sample): {len(retail_contacts)}")
+            
+            # Check companies table for industry info
+            companies_query = supabase.table('companies').select('industry').limit(100)
+            companies_result = companies_query.execute()
+            if companies_result.data:
+                company_industries = set()
+                for comp in companies_result.data:
+                    industry_val = comp.get('industry') or ''
+                    if industry_val:
+                        company_industries.add(industry_val)
+                logger.warning(f"Sample industries found in companies: {sorted(list(company_industries))[:20]}")
+            
             # Save empty result
             if user_id:
                 try:
@@ -759,21 +1011,139 @@ def ai_identify_targets():
                 'success': True,
                 'recommendations': [],
                 'count': 0,
-                'search_id': None
+                'search_id': None,
+                'message': f'No contacts found for industry: {", ".join(industries)}. Check server logs for diagnostic information.'
             })
         
         # Convert to list of dicts and filter by industries
         contacts = []
+        logger.debug(f"Fetched {len(contacts_response.data)} contacts from database before industry filtering")
+        logger.debug(f"Filtering for industries: {industries}")
+        
+        # Quick check: if we have contacts but none match, try fallback query
+        # This is important because Supabase ilike might not work as expected in all cases
+        if contacts_response.data and industries and len(industries) == 1:
+            quick_match_count = 0
+            sample_industries_found = set()
+            for c in contacts_response.data[:20]:  # Check first 20
+                contact_industry = (c.get('industry') or '').strip().lower()
+                if not contact_industry and c.get('companies') and c['companies'].get('industry'):
+                    contact_industry = (c['companies'].get('industry') or '').strip().lower()
+                if contact_industry:
+                    sample_industries_found.add(contact_industry)
+                    # Check if this contact matches the requested industry
+                    requested_industry_lower = industries[0].strip().lower()
+                    if (requested_industry_lower in contact_industry or 
+                        contact_industry in requested_industry_lower or
+                        contact_industry == requested_industry_lower):
+                        quick_match_count += 1
+                        break  # Found at least one match
+            
+            logger.debug(f"Quick match check: {quick_match_count} matches found in first 20 contacts")
+            logger.debug(f"Sample industries in fetched contacts: {sorted(list(sample_industries_found))}")
+            
+            # If no matches in first 20, try fallback query (fetch all and filter in Python)
+            if quick_match_count == 0:
+                logger.warning(f"No matching contacts found in first 20 results for '{industries[0]}'. Trying fallback query (no industry filter)...")
+                # First, check if retail contacts exist at all
+                retail_check_query = supabase.table('contacts').select('id, industry').ilike('industry', '%retail%')
+                if exclude_processed:
+                    retail_check_query = retail_check_query.eq('is_target', False)
+                retail_check_query = retail_check_query.limit(10)
+                retail_check_response = retail_check_query.execute()
+                if retail_check_response.data:
+                    logger.warning(f"Found {len(retail_check_response.data)} contacts with 'retail' in industry field. Initial query may have missed them.")
+                    # Use the retail-specific query but with higher limit
+                    fallback_query = supabase.table('contacts').select('*, companies(name, industry, domain)')
+                    if exclude_processed:
+                        fallback_query = fallback_query.eq('is_target', False)
+                    # Try lowercase version of industry name
+                    fallback_query = fallback_query.ilike('industry', f'%{industries[0].strip().lower()}%')
+                    fallback_query = fallback_query.limit(max(fetch_limit * 2, 1000))  # Get more for filtering
+                    fallback_response = fallback_query.execute()
+                    if fallback_response.data:
+                        logger.warning(f"Fallback query (lowercase) found {len(fallback_response.data)} contacts. Will filter in Python for industry '{industries[0]}'.")
+                        contacts_response = fallback_response
+                else:
+                    # No retail contacts found even with direct query - try fetching all and filtering
+                    logger.warning(f"No contacts found with 'retail' in industry. Fetching all contacts for Python filtering...")
+                    fallback_query = supabase.table('contacts').select('*, companies(name, industry, domain)')
+                    if exclude_processed:
+                        fallback_query = fallback_query.eq('is_target', False)
+                    fallback_query = fallback_query.limit(max(fetch_limit * 3, 1000))  # Get more for filtering
+                    fallback_response = fallback_query.execute()
+                    if fallback_response.data:
+                        logger.warning(f"Fallback query (no filter) found {len(fallback_response.data)} contacts. Will filter in Python for industry '{industries[0]}'.")
+                        contacts_response = fallback_response
+        
         for c in contacts_response.data:
-            contact_industry = (c.get('industry') or '').lower()
-            # Check if contact matches any of the selected industries
+            # Get industry from contact or company (prioritize contact industry)
+            contact_industry = (c.get('industry') or '').strip()
+            company_industry = None
+            if c.get('companies') and c['companies'].get('industry'):
+                company_industry = (c['companies'].get('industry') or '').strip()
+            
+            # Use company industry if contact industry is missing
+            if not contact_industry and company_industry:
+                contact_industry = company_industry
+                logger.debug(f"Contact {c.get('name', 'Unknown')}: Using company industry '{contact_industry}'")
+            
+            contact_industry_lower = contact_industry.lower() if contact_industry else ''
+            company_industry_lower = company_industry.lower() if company_industry else ''
+            
+            # Check if contact matches any of the selected industries (case-insensitive, flexible matching)
             matches = False
+            matched_industry = None
             for ind in industries:
-                if ind.lower() in contact_industry or contact_industry in ind.lower():
+                ind_clean = ind.strip().lower()
+                
+                # Normalize industry names for better matching
+                # Remove common variations: "&" -> "and", remove commas, remove extra spaces, etc.
+                ind_normalized = ind_clean.replace('&', 'and').replace(',', ' ').replace('  ', ' ').strip()
+                contact_normalized = contact_industry_lower.replace('&', 'and').replace(',', ' ').replace('  ', ' ').strip()
+                company_normalized = company_industry_lower.replace('&', 'and').replace(',', ' ').replace('  ', ' ').strip() if company_industry_lower else ''
+                
+                # Extract key words from requested industry (words > 3 characters)
+                ind_words = [w for w in ind_normalized.split() if len(w) > 3]
+                contact_words = contact_industry_lower.split()
+                company_words = company_industry_lower.split() if company_industry_lower else []
+                
+                # Flexible matching: check multiple variations
+                match_checks = [
+                    ind_clean in contact_industry_lower,
+                    contact_industry_lower in ind_clean,
+                    contact_industry_lower == ind_clean,
+                    ind_normalized in contact_normalized,
+                    contact_normalized in ind_normalized,
+                    contact_normalized == ind_normalized,
+                    # Word-based matching: check if key words from requested industry appear in contact industry
+                    any(word in contact_industry_lower for word in ind_words) if ind_words else False,
+                    any(word in ind_clean for word in contact_words if len(word) > 3) if contact_words else False,
+                ]
+                
+                # Also check company industry if available
+                if company_industry_lower:
+                    match_checks.extend([
+                        ind_clean in company_industry_lower,
+                        company_industry_lower in ind_clean,
+                        company_industry_lower == ind_clean,
+                        ind_normalized in company_normalized,
+                        company_normalized in ind_normalized,
+                        company_normalized == ind_normalized,
+                        # Word-based matching for company industry
+                        any(word in company_industry_lower for word in ind_words) if ind_words else False,
+                        any(word in ind_clean for word in company_words if len(word) > 3) if company_words else False,
+                    ])
+                
+                if any(match_checks):
                     matches = True
+                    matched_industry = ind
+                    logger.debug(f"Contact {c.get('name', 'Unknown')} matches industry '{ind}' (contact industry: '{contact_industry}', company industry: '{company_industry}')")
                     break
             
             if not matches:
+                if contact_industry or company_industry:
+                    logger.debug(f"Contact {c.get('name', 'Unknown')} does not match (contact: '{contact_industry}', company: '{company_industry}', selected: {industries})")
                 continue
             
             contact_dict = {
@@ -792,6 +1162,9 @@ def ai_identify_targets():
                     contact_dict['industry'] = c['companies'].get('industry', '')
             contacts.append(contact_dict)
         
+        # Track which contact IDs were analyzed (for updating analysis tracking)
+        analyzed_contact_ids = [c.get('id') for c in contacts if c.get('id')]
+        
         # Use AI service to identify targets (use first industry for context, but results include all)
         primary_industry = industries[0] if industries else 'general'
         identification_service = get_target_identification_service()
@@ -802,26 +1175,140 @@ def ai_identify_targets():
             min_seniority=min_seniority
         )
         
-        # Convert recommendations to dicts for storage
-        recommendations_dicts = [r.to_dict() for r in recommendations]
+        # Update contact analysis tracking (mark as analyzed)
+        if analyzed_contact_ids:
+            try:
+                from datetime import datetime
+                now = datetime.utcnow().isoformat()
+                # Update last_analyzed_at and increment analysis_count for all analyzed contacts
+                for contact_id in analyzed_contact_ids:
+                    # Get current analysis_count
+                    current_contact = supabase.table('contacts').select('analysis_count').eq('id', contact_id).limit(1).execute()
+                    current_count = current_contact.data[0].get('analysis_count', 0) if current_contact.data else 0
+                    
+                    # Update contact
+                    supabase.table('contacts').update({
+                        'last_analyzed_at': now,
+                        'analysis_count': current_count + 1
+                    }).eq('id', contact_id).execute()
+            except Exception as track_error:
+                logger.warning(f"Failed to update contact analysis tracking: {track_error}")
+                # Don't fail the request if tracking fails
         
-        # Save search results to database
-        search_id = None
+        # Convert recommendations to dicts for storage and add overall_score
+        # Also add contact processing status for frontend display
+        recommendations_dicts = []
+        for r in recommendations:
+            rec_dict = r.to_dict() if hasattr(r, 'to_dict') else r
+            # Calculate overall_score if not present
+            if 'overall_score' not in rec_dict:
+                seniority = rec_dict.get('seniority_score', 0.5)
+                confidence = rec_dict.get('confidence_score', 0.5)
+                rec_dict['overall_score'] = (seniority * 0.6 + confidence * 0.4)
+            
+            # Add contact processing status for frontend badges
+            contact_id = rec_dict.get('contact_id')
+            if contact_id:
+                try:
+                    contact_status = supabase.table('contacts').select('is_target, last_analyzed_at, analysis_count').eq('id', contact_id).limit(1).execute()
+                    if contact_status.data:
+                        rec_dict['is_target'] = contact_status.data[0].get('is_target', False)
+                        rec_dict['last_analyzed_at'] = contact_status.data[0].get('last_analyzed_at')
+                        rec_dict['analysis_count'] = contact_status.data[0].get('analysis_count', 0)
+                except Exception as status_error:
+                    logger.warning(f"Failed to fetch contact status for {contact_id}: {status_error}")
+                    rec_dict['is_target'] = False
+                    rec_dict['last_analyzed_at'] = None
+            
+            recommendations_dicts.append(rec_dict)
+        
+        # Check if report already exists for this search configuration (to save resources)
+        existing_report = None
+        existing_search_id = None
+        if user_id and data.get('generate_report', False):
+            try:
+                # Create a hash of search config for comparison
+                search_config_hash = {
+                    'industries': sorted(industries) if isinstance(industries, list) else [industries],
+                    'min_seniority': min_seniority,
+                    'limit': limit,
+                    'preset': preset,
+                    'exclude_processed': exclude_processed
+                }
+                
+                # Check for existing report with same config
+                existing_result = supabase.table('ai_target_search_results').select('id, report, report_generated_at').eq('user_id', user_id).eq('status', 'completed').not_.is_('report', 'null').order('report_generated_at', desc=True).limit(10).execute()
+                
+                if existing_result.data:
+                    import json
+                    for existing in existing_result.data:
+                        existing_config = existing.get('search_config', {})
+                        if existing_config:
+                            # Compare search configs (normalize industries for comparison)
+                            existing_industries = sorted(existing_config.get('industries', []))
+                            current_industries = sorted(industries) if isinstance(industries, list) else [industries]
+                            
+                            if (existing_industries == current_industries and
+                                existing_config.get('min_seniority') == min_seniority and
+                                existing_config.get('limit') == limit and
+                                existing_config.get('preset') == preset):
+                                existing_report = existing.get('report')
+                                existing_search_id = str(existing['id'])
+                                logger.info(f"Found existing report for search config (ID: {existing_search_id})")
+                                break
+            except Exception as check_error:
+                logger.warning(f"Error checking for existing report: {check_error}")
+        
+        # Generate detailed report if requested and not found in cache
+        report = existing_report
+        if data.get('generate_report', False) and not report:
+            try:
+                from app.services.recommendation_report_generator import RecommendationReportGenerator
+                # Use primary industry for report generation
+                primary_industry = industries[0] if industries else 'General'
+                report = RecommendationReportGenerator.generate_report(
+                    recommendations=recommendations_dicts,
+                    industry=primary_industry,
+                    search_config={
+                        'industries': industries,
+                        'min_seniority': min_seniority,
+                        'limit': limit,
+                        'preset': preset
+                    }
+                )
+                logger.info("Generated new report")
+            except Exception as report_error:
+                logger.warning(f"Failed to generate report: {report_error}")
+                import traceback
+                logger.error(traceback.format_exc())
+        
+        # Save search results to database (with report if generated)
+        search_id = existing_search_id
         if user_id:
             try:
                 search_config_data = {
                     'industries': industries,
                     'min_seniority': min_seniority,
                     'limit': limit,
-                    'preset': preset
+                    'preset': preset,
+                    'exclude_processed': exclude_processed
                 }
-                result = supabase.table('ai_target_search_results').insert({
+                
+                insert_data = {
                     'user_id': user_id,
                     'search_config': search_config_data,
                     'results': recommendations_dicts,
                     'result_count': len(recommendations),
                     'status': 'completed'
-                }).execute()
+                }
+                
+                # Add report if generated
+                if report:
+                    from datetime import datetime
+                    insert_data['report'] = report
+                    insert_data['report_generated_at'] = datetime.utcnow().isoformat()
+                
+                result = supabase.table('ai_target_search_results').insert(insert_data).execute()
                 
                 if result.data:
                     search_id = str(result.data[0]['id'])
@@ -830,12 +1317,20 @@ def ai_identify_targets():
                 import traceback
                 logger.error(traceback.format_exc())
         
-        return jsonify({
+        response_data = {
             'success': True,
             'recommendations': recommendations_dicts,
             'count': len(recommendations),
-            'search_id': search_id
-        })
+            'search_id': search_id,
+            'excluded_count': excluded_count if exclude_processed else 0,
+            'exclude_processed': exclude_processed
+        }
+        
+        if report:
+            response_data['report'] = report
+            response_data['report_cached'] = existing_report is not None  # Indicate if report was from cache
+        
+        return jsonify(response_data)
         
     except Exception as e:
         logger.error(f"Error in AI target identification: {e}")
@@ -878,17 +1373,41 @@ def ai_create_targets():
         
         created_targets = []
         
-        # Get contacts for recommendations
-        contacts_query = supabase.table('contacts').select('*')
-        contacts_response = contacts_query.execute()
-        contacts_dict = {str(c['id']): c for c in contacts_response.data} if contacts_response.data else {}
+        # Get contacts for recommendations - try to find by ID (handle both string and UUID formats)
+        contacts_dict = {}
+        if recommendation_ids:
+            # Try to fetch contacts by IDs directly (more efficient)
+            try:
+                # Convert all IDs to strings for comparison
+                rec_ids_str = [str(rid) for rid in recommendation_ids]
+                contacts_query = supabase.table('contacts').select('*').in_('id', rec_ids_str)
+                contacts_response = contacts_query.execute()
+                if contacts_response.data:
+                    # Create dict with both string and original format keys
+                    for c in contacts_response.data:
+                        contact_id_str = str(c['id'])
+                        contacts_dict[contact_id_str] = c
+                        # Also store with original ID format if different
+                        if contact_id_str != c['id']:
+                            contacts_dict[c['id']] = c
+            except Exception as e:
+                logger.warning(f"Error fetching contacts by IDs: {e}, falling back to full query")
+                # Fallback: fetch all contacts
+                contacts_query = supabase.table('contacts').select('*')
+                contacts_response = contacts_query.execute()
+                if contacts_response.data:
+                    for c in contacts_response.data:
+                        contact_id_str = str(c['id'])
+                        contacts_dict[contact_id_str] = c
+                        contacts_dict[c['id']] = c
         
         for rec_id in recommendation_ids:
             try:
-                # Find contact by ID (rec_id should be contact_id)
-                contact = contacts_dict.get(rec_id)
+                # Find contact by ID (try both string and original format)
+                rec_id_str = str(rec_id)
+                contact = contacts_dict.get(rec_id_str) or contacts_dict.get(rec_id)
                 if not contact:
-                    logger.warning(f"Contact not found for recommendation ID: {rec_id}")
+                    logger.warning(f"Contact not found for recommendation ID: {rec_id} (tried as string: {rec_id_str})")
                     continue
                 
                 # Create recommendation object
@@ -933,11 +1452,13 @@ def ai_create_targets():
                     gemini_insights
                 )
                 
-                # Auto-assign industry_id
+                # Auto-assign industry_id - prioritize user's current industry
                 target_industry_id = None
-                if is_industry_admin and user_industry_id:
+                if user_industry_id:
+                    # Use user's current industry (for both industry admins and regular users)
                     target_industry_id = user_industry_id
                 elif contact.get('industry'):
+                    # Fallback: try to match contact's industry
                     industry_lookup = supabase.table('industries').select('id').ilike('name', f'%{contact["industry"]}%').limit(1).execute()
                     if industry_lookup.data:
                         target_industry_id = str(industry_lookup.data[0]['id'])
@@ -984,11 +1505,111 @@ def ai_create_targets():
         return jsonify({
             'success': True,
             'targets': created_targets,
-            'count': len(created_targets)
+            'count': len(created_targets),
+            'created_count': len(created_targets)  # Frontend expects this field
         })
         
     except Exception as e:
         logger.error(f"Error in AI target creation: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify({'error': str(e)}), 500
+
+
+@targets_bp.route('/api/targets/ai-reports', methods=['GET'])
+@require_auth
+@require_use_case('ai_target_finder')
+def list_stored_reports():
+    """List all stored reports for the current user"""
+    try:
+        user = get_current_user()
+        if not user:
+            return jsonify({'error': 'User not authenticated'}), 401
+        
+        user_id = str(user.id) if hasattr(user, 'id') else None
+        if not user_id:
+            return jsonify({'error': 'User ID not found'}), 400
+        
+        supabase = get_supabase_client(current_app)
+        if not supabase:
+            return jsonify({'error': 'Supabase not configured'}), 503
+        
+        # Get limit and offset from query params
+        limit = int(request.args.get('limit', 20))
+        offset = int(request.args.get('offset', 0))
+        
+        # Fetch reports (only those with reports generated)
+        result = supabase.table('ai_target_search_results').select(
+            'id, search_config, report_generated_at, result_count, created_at'
+        ).eq('user_id', user_id).not_.is_('report', 'null').order('report_generated_at', desc=True).limit(limit).offset(offset).execute()
+        
+        reports = []
+        if result.data:
+            for r in result.data:
+                reports.append({
+                    'id': str(r['id']),
+                    'search_config': r.get('search_config', {}),
+                    'report_generated_at': r.get('report_generated_at'),
+                    'result_count': r.get('result_count', 0),
+                    'created_at': r.get('created_at')
+                })
+        
+        return jsonify({
+            'success': True,
+            'reports': reports,
+            'count': len(reports)
+        })
+        
+    except Exception as e:
+        logger.error(f"Error listing stored reports: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify({'error': str(e)}), 500
+
+
+@targets_bp.route('/api/targets/ai-reports/<report_id>', methods=['GET'])
+@require_auth
+@require_use_case('ai_target_finder')
+def get_stored_report(report_id):
+    """Retrieve a specific stored report"""
+    try:
+        user = get_current_user()
+        if not user:
+            return jsonify({'error': 'User not authenticated'}), 401
+        
+        user_id = str(user.id) if hasattr(user, 'id') else None
+        if not user_id:
+            return jsonify({'error': 'User ID not found'}), 400
+        
+        supabase = get_supabase_client(current_app)
+        if not supabase:
+            return jsonify({'error': 'Supabase not configured'}), 503
+        
+        # Fetch the report
+        result = supabase.table('ai_target_search_results').select(
+            'id, search_config, report, report_generated_at, result_count, results, created_at'
+        ).eq('id', report_id).eq('user_id', user_id).execute()
+        
+        if not result.data:
+            return jsonify({'error': 'Report not found'}), 404
+        
+        report_data = result.data[0]
+        
+        return jsonify({
+            'success': True,
+            'report': {
+                'id': str(report_data['id']),
+                'search_config': report_data.get('search_config', {}),
+                'report': report_data.get('report'),
+                'report_generated_at': report_data.get('report_generated_at'),
+                'result_count': report_data.get('result_count', 0),
+                'results': report_data.get('results', []),
+                'created_at': report_data.get('created_at')
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"Error retrieving stored report: {e}")
         import traceback
         logger.error(traceback.format_exc())
         return jsonify({'error': str(e)}), 500

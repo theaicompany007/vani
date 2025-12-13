@@ -31,9 +31,20 @@ load_ngrok_config_fallback()
 
 
 class WebhookConfigurator:
-    """Configure webhooks for all services"""
+    """Configure webhooks for all services with environment-aware safety checks"""
     
-    def _get_ngrok_url(self) -> Optional[str]:
+    def __init__(self, environment: str = 'dev'):
+        """
+        Initialize webhook configurator
+        
+        Args:
+            environment: 'dev' or 'prod' - determines if updates are safe
+        """
+        self.environment = environment.lower()
+        self._init_webhook_urls()
+    
+    def _init_webhook_urls(self):
+        """Initialize webhook URLs from environment"""
         """Get ngrok URL from ngrok API"""
         try:
             import requests
@@ -56,7 +67,8 @@ class WebhookConfigurator:
         
         return None
     
-    def __init__(self):
+    def _init_webhook_urls(self):
+        """Initialize webhook URLs from environment"""
         # All values loaded from .env.local (loaded at module level)
         self.webhook_base_url = os.getenv('WEBHOOK_BASE_URL')
         
@@ -81,13 +93,13 @@ class WebhookConfigurator:
         self.resend_api_key = os.getenv('RESEND_API_KEY')
         self.resend_webhook_url = f"{self.webhook_base_url}/api/webhooks/resend"
         
-        # Twilio
-        self.twilio_account_sid = os.getenv('TWILIO_ACCOUNT_SID')
-        self.twilio_auth_token = os.getenv('TWILIO_AUTH_TOKEN')
+        # Twilio - trim whitespace from credentials
+        self.twilio_account_sid = os.getenv('TWILIO_ACCOUNT_SID', '').strip() if os.getenv('TWILIO_ACCOUNT_SID') else ''
+        self.twilio_auth_token = os.getenv('TWILIO_AUTH_TOKEN', '').strip() if os.getenv('TWILIO_AUTH_TOKEN') else ''
         # Support WhatsApp Sandbox (priority: sandbox > regular)
         whatsapp_num = os.getenv('TWILIO_SANDBOX_WHATSAPP_NUMBER') or os.getenv('TWILIO_WHATSAPP_NUMBER', '')
-        self.twilio_whatsapp_number = whatsapp_num.replace('whatsapp:', '').replace('+', '')
-        self.twilio_phone_number = os.getenv('TWILIO_PHONE_NUMBER', '').replace('+', '')
+        self.twilio_whatsapp_number = whatsapp_num.replace('whatsapp:', '').replace('+', '').strip()
+        self.twilio_phone_number = os.getenv('TWILIO_PHONE_NUMBER', '').replace('+', '').strip()
         self.twilio_webhook_url = f"{self.webhook_base_url}/api/webhooks/twilio"
         
         # Log which number is being used
@@ -103,6 +115,45 @@ class WebhookConfigurator:
         # Check if it's a v1 or v2 key
         if self.cal_com_api_key and not self.cal_com_api_key.startswith('cal_'):
             print("⚠️  Warning: CAL_COM_API_KEY format may be incorrect (should start with 'cal_')")
+    
+    def _is_safe_to_update(self, current_url: str, target_url: str) -> bool:
+        """
+        Check if it's safe to update webhook URL based on environment
+        
+        Returns True if:
+        - Current URL is empty/None (safe to set)
+        - Current URL matches target URL (already correct)
+        - Current URL matches current environment (dev updating dev, prod updating prod)
+        
+        Returns False if:
+        - Current URL is for different environment (prevents overwrite)
+        """
+        if not current_url or current_url.strip() == '':
+            return True  # Empty URL is safe to update
+        
+        if current_url == target_url:
+            return True  # Already correct, safe to update
+        
+        # Check environment match
+        current_lower = current_url.lower()
+        target_lower = target_url.lower()
+        
+        is_current_dev = 'vani-dev.ngrok' in current_lower
+        is_current_prod = 'vani.ngrok' in current_lower and 'vani-dev' not in current_lower
+        is_target_dev = 'vani-dev.ngrok' in target_lower
+        is_target_prod = 'vani.ngrok' in target_lower and 'vani-dev' not in target_lower
+        
+        # Safe if both are same environment
+        if (is_current_dev and is_target_dev) or (is_current_prod and is_target_prod):
+            return True
+        
+        # Unsafe if trying to overwrite different environment
+        if (is_current_dev and is_target_prod) or (is_current_prod and is_target_dev):
+            return False
+        
+        # If we can't determine environment, be conservative and allow update
+        # (might be a different domain or format)
+        return True
     
     def configure_resend_webhook(self) -> Dict[str, Any]:
         """Configure Resend webhook"""
@@ -167,11 +218,14 @@ class WebhookConfigurator:
                 existing_webhooks = response.json().get('data', [])
                 print(f"\nFound {len(existing_webhooks)} existing webhook(s)")
                 
-                # Check if webhook already exists
+                # Check if webhook already exists and if it's safe to update
                 for webhook in existing_webhooks:
-                    if webhook.get('url') == self.resend_webhook_url:
-                        webhook_id = webhook.get('id')
-                        print(f"✅ Webhook already exists (ID: {webhook_id})")
+                    current_webhook_url = webhook.get('url', '')
+                    webhook_id = webhook.get('id')
+                    
+                    # Check if this webhook matches our target URL or needs updating
+                    if current_webhook_url == self.resend_webhook_url:
+                        print(f"✅ Webhook already exists with correct URL (ID: {webhook_id})")
                         
                         # Update webhook to ensure events are correct
                         update_url = f"{api_url}/{webhook_id}"
@@ -186,6 +240,35 @@ class WebhookConfigurator:
                         else:
                             print(f"⚠️  Failed to update webhook: {update_response.text}")
                             return {'success': False, 'error': f"Update failed: {update_response.text}"}
+                    
+                    # Check if we should update this webhook (environment-aware)
+                    elif self._is_safe_to_update(current_webhook_url, self.resend_webhook_url):
+                        print(f"🔄 Found existing webhook with different URL (ID: {webhook_id})")
+                        print(f"   Current: {current_webhook_url}")
+                        print(f"   Target:  {self.resend_webhook_url}")
+                        
+                        # Update webhook URL and events
+                        update_url = f"{api_url}/{webhook_id}"
+                        update_data = {
+                            'url': self.resend_webhook_url,
+                            'events': events
+                        }
+                        update_response = requests.patch(update_url, headers=headers, json=update_data)
+                        
+                        if update_response.status_code == 200:
+                            print(f"✅ Webhook URL updated successfully")
+                            return {'success': True, 'webhook_id': webhook_id, 'action': 'updated'}
+                        else:
+                            print(f"⚠️  Failed to update webhook: {update_response.text}")
+                            return {'success': False, 'error': f"Update failed: {update_response.text}"}
+                    
+                    else:
+                        # Environment mismatch - skip update
+                        print(f"⚠️  Skipping Resend webhook update (environment mismatch)")
+                        print(f"   Current URL ({current_webhook_url}) is for different environment")
+                        print(f"   Target URL ({self.resend_webhook_url}) would overwrite production webhook")
+                        print(f"   To update manually, set SKIP_WEBHOOK_UPDATE=false and ensure correct environment")
+                        return {'success': False, 'error': 'Environment mismatch - would overwrite different environment webhook', 'skipped': True}
             else:
                 print(f"⚠️  Could not list webhooks: {response.text}")
         except Exception as e:
@@ -227,17 +310,97 @@ class WebhookConfigurator:
         print("="*70)
         print(f"Webhook URL: {self.twilio_webhook_url}")
         print(f"WhatsApp Number: {self.twilio_whatsapp_number}")
+        print(f"Account SID: {self.twilio_account_sid[:10]}...{self.twilio_account_sid[-4:] if len(self.twilio_account_sid) > 14 else ''}")
+        print(f"Auth Token: {'*' * (len(self.twilio_auth_token) - 4) + self.twilio_auth_token[-4:] if len(self.twilio_auth_token) > 4 else '***'}")
         
-        # Twilio API endpoint
-        # First, get the phone number SID
-        numbers_url = f"https://{self.twilio_account_sid}:{self.twilio_auth_token}@api.twilio.com/2010-04-01/Accounts/{self.twilio_account_sid}/IncomingPhoneNumbers.json"
+        # Validate credentials format
+        validation_errors = []
+        if not self.twilio_account_sid:
+            validation_errors.append("TWILIO_ACCOUNT_SID is empty")
+        elif not self.twilio_account_sid.startswith('AC'):
+            validation_errors.append(f"TWILIO_ACCOUNT_SID should start with 'AC' (got: {self.twilio_account_sid[:5]}...)")
+        elif len(self.twilio_account_sid) != 34:
+            validation_errors.append(f"TWILIO_ACCOUNT_SID should be 34 characters (got: {len(self.twilio_account_sid)})")
+        
+        if not self.twilio_auth_token:
+            validation_errors.append("TWILIO_AUTH_TOKEN is empty")
+        elif len(self.twilio_auth_token) < 30:
+            validation_errors.append(f"TWILIO_AUTH_TOKEN seems too short (should be ~32 characters, got: {len(self.twilio_auth_token)})")
+        
+        if validation_errors:
+            print("\n⚠️  Credential validation warnings:")
+            for error in validation_errors:
+                print(f"   - {error}")
+            print("\n💡 Check your .env.local file for:")
+            print(f"   TWILIO_ACCOUNT_SID={self.twilio_account_sid[:20] if self.twilio_account_sid else '(empty)'}...")
+            print(f"   TWILIO_AUTH_TOKEN={'*' * 20 if self.twilio_auth_token else '(empty)'}...")
+        
+        # Twilio API endpoint - use requests auth instead of URL embedding
+        numbers_url = f"https://api.twilio.com/2010-04-01/Accounts/{self.twilio_account_sid}/IncomingPhoneNumbers.json"
         
         try:
-            response = requests.get(numbers_url)
+            # First, test authentication with a simple account info request
+            print(f"\n🔍 Testing Twilio authentication...")
+            test_url = f"https://api.twilio.com/2010-04-01/Accounts/{self.twilio_account_sid}.json"
+            test_response = requests.get(
+                test_url,
+                auth=(self.twilio_account_sid, self.twilio_auth_token),
+                timeout=10
+            )
+            
+            if test_response.status_code == 401:
+                error_data = test_response.json() if test_response.text else {}
+                error_code = error_data.get('code', '')
+                error_msg = error_data.get('message', 'Authentication failed')
+                print(f"❌ Twilio authentication failed (401)")
+                print(f"   Error Code: {error_code}")
+                print(f"   Message: {error_msg}")
+                print(f"\n💡 Troubleshooting:")
+                print(f"   1. Verify TWILIO_ACCOUNT_SID is correct:")
+                print(f"      - Should start with 'AC'")
+                print(f"      - Should be exactly 34 characters")
+                print(f"      - Current: {self.twilio_account_sid[:20]}... (length: {len(self.twilio_account_sid)})")
+                print(f"   2. Verify TWILIO_AUTH_TOKEN is correct:")
+                print(f"      - Should be ~32 characters")
+                print(f"      - Check for extra spaces or newlines in .env.local")
+                print(f"      - Current length: {len(self.twilio_auth_token)} characters")
+                print(f"   3. Check credentials in Twilio Console:")
+                print(f"      https://console.twilio.com/us1/account/settings/credentials")
+                print(f"   4. Regenerate Auth Token if needed:")
+                print(f"      - Go to Twilio Console → Account → Auth Tokens")
+                print(f"      - Create new token and update .env.local")
+                print(f"   5. Ensure credentials are from the correct Twilio account")
+                print(f"   6. Check if account is active (not suspended)")
+                return {'success': False, 'error': f'Authentication failed: {error_msg}'}
+            
+            if test_response.status_code == 200:
+                account_info = test_response.json()
+                print(f"✅ Authentication successful!")
+                print(f"   Account Name: {account_info.get('friendly_name', 'N/A')}")
+                print(f"   Account Status: {account_info.get('status', 'N/A')}")
+            
+            # Now fetch phone numbers
+            print(f"\n📞 Fetching phone numbers...")
+            response = requests.get(
+                numbers_url,
+                auth=(self.twilio_account_sid, self.twilio_auth_token),
+                timeout=10
+            )
+            
+            if response.status_code == 401:
+                # Shouldn't happen if test passed, but handle it
+                error_data = response.json() if response.text else {}
+                error_code = error_data.get('code', '')
+                error_msg = error_data.get('message', 'Authentication failed')
+                print(f"❌ Failed to fetch phone numbers (401)")
+                print(f"   Error Code: {error_code}")
+                print(f"   Message: {error_msg}")
+                return {'success': False, 'error': f'Authentication failed: {error_msg}'}
             
             if response.status_code != 200:
-                print(f"❌ Failed to fetch phone numbers: {response.text}")
-                return {'success': False, 'error': 'Could not fetch phone numbers'}
+                print(f"❌ Failed to fetch phone numbers (status: {response.status_code})")
+                print(f"   Response: {response.text[:200]}")
+                return {'success': False, 'error': f'Could not fetch phone numbers (status: {response.status_code})'}
             
             numbers = response.json().get('incoming_phone_numbers', [])
             
@@ -279,6 +442,16 @@ class WebhookConfigurator:
             number_sid = target_number.get('sid')
             print(f"✅ Found number SID: {number_sid}")
             
+            # Check current status callback URL before updating
+            current_status_callback = target_number.get('status_callback', '')
+            
+            # Check if it's safe to update
+            if not self._is_safe_to_update(current_status_callback, self.twilio_webhook_url):
+                print(f"⚠️  Skipping Twilio webhook update (environment mismatch)")
+                print(f"   Current URL ({current_status_callback}) is for different environment")
+                print(f"   Target URL ({self.twilio_webhook_url}) would overwrite production webhook")
+                return {'success': False, 'error': 'Environment mismatch - would overwrite different environment webhook', 'skipped': True}
+            
             # Update the number's status callback
             update_url = f"https://{self.twilio_account_sid}:{self.twilio_auth_token}@api.twilio.com/2010-04-01/Accounts/{self.twilio_account_sid}/IncomingPhoneNumbers/{number_sid}.json"
             
@@ -286,6 +459,13 @@ class WebhookConfigurator:
                 'StatusCallback': self.twilio_webhook_url,
                 'StatusCallbackMethod': 'POST'
             }
+            
+            if current_status_callback == self.twilio_webhook_url:
+                print(f"✅ Status callback URL already correct - no update needed")
+                return {'success': True, 'number_sid': number_sid, 'action': 'no_change'}
+            
+            print(f"🔄 Updating status callback from: {current_status_callback}")
+            print(f"   To: {self.twilio_webhook_url}")
             
             update_response = requests.post(update_url, data=update_data)
             
@@ -309,30 +489,28 @@ class WebhookConfigurator:
         print("  CONFIGURING CAL.COM WEBHOOK")
         print("="*70)
         print(f"Webhook URL: {self.cal_com_webhook_url}")
+        print(f"API Key: {self.cal_com_api_key[:15]}...{self.cal_com_api_key[-4:] if len(self.cal_com_api_key) > 19 else ''}")
         
-        # Cal.com API endpoint for webhooks
-        api_url = "https://api.cal.com/v1/webhooks"
+        # Cal.com API endpoints
+        # Cal.com v1 API uses query parameter authentication: ?apiKey=xxx
+        # Cal.com v2 API uses header authentication: x-cal-secret-key
+        api_url_v1 = f"https://api.cal.com/v1/webhooks?apiKey={self.cal_com_api_key}"
+        api_url_v2 = "https://api.cal.com/v2/webhooks"
         
-        # Cal.com API v1 uses Bearer token, v2 uses x-cal-secret-key
-        # Based on key format: cal_live_xxx or cal_test_xxx
-        if self.cal_com_api_key.startswith('cal_live_') or self.cal_com_api_key.startswith('cal_test_'):
-            # This is a v1 API key, use Bearer token
-            headers = {
-                'Authorization': f'Bearer {self.cal_com_api_key}',
-                'Content-Type': 'application/json'
-            }
-            print(f"✅ Using Cal.com v1 API (Bearer token)")
-        else:
-            # Try v2 format (requires both headers)
-            headers = {
-                'x-cal-secret-key': self.cal_com_api_key,
-                'x-cal-api-key': self.cal_com_api_key,  # Some endpoints need both
-                'Content-Type': 'application/json'
-            }
-            print(f"⚠️  Trying Cal.com v2 API format")
+        # Determine API version based on key format
+        use_v1 = self.cal_com_api_key.startswith('cal_live_') or self.cal_com_api_key.startswith('cal_test_')
         
-        # Note: Cal.com API authentication can be complex
-        # If this fails, configure webhooks manually in Cal.com dashboard
+        # Prepare headers for both versions
+        # v1 uses query parameter, so headers are simple
+        headers_v1 = {
+            'Content-Type': 'application/json'
+        }
+        
+        # v2 uses header authentication
+        headers_v2 = {
+            'x-cal-secret-key': self.cal_com_api_key,
+            'Content-Type': 'application/json'
+        }
         
         # Events to subscribe to
         events = [
@@ -341,40 +519,161 @@ class WebhookConfigurator:
             'BOOKING_RESCHEDULED'
         ]
         
-        # List existing webhooks
+        # List existing webhooks - try multiple authentication methods
+        existing_webhooks = []
+        api_used = None
+        api_url = None
+        headers = None
+        
         try:
-            response = requests.get(api_url, headers=headers)
-            
-            if response.status_code == 200:
-                existing_webhooks = response.json().get('webhooks', [])
-                print(f"\nFound {len(existing_webhooks)} existing webhook(s)")
+            if use_v1:
+                print(f"✅ Using Cal.com v1 API (query parameter authentication)")
+                # v1 API uses query parameter: ?apiKey=xxx
+                response = requests.get(api_url_v1, headers=headers_v1, timeout=10)
                 
-                # Check if webhook already exists
-                for webhook in existing_webhooks:
-                    if webhook.get('subscriberUrl') == self.cal_com_webhook_url:
-                        webhook_id = webhook.get('id')
-                        print(f"✅ Webhook already exists (ID: {webhook_id})")
-                        
-                        # Update webhook
-                        update_url = f"{api_url}/{webhook_id}"
-                        update_data = {
-                            'eventTriggers': events,
-                            'secret': self.cal_com_webhook_secret
-                        }
-                        update_response = requests.patch(update_url, headers=headers, json=update_data)
-                        
-                        if update_response.status_code == 200:
-                            print(f"✅ Webhook updated successfully")
-                            return {'success': True, 'webhook_id': webhook_id, 'action': 'updated'}
-                        else:
-                            print(f"⚠️  Failed to update webhook: {update_response.text}")
-                            return {'success': False, 'error': f"Update failed: {update_response.text}"}
+                if response.status_code == 200:
+                    data = response.json()
+                    existing_webhooks = data.get('webhooks', data.get('data', []))
+                    print(f"✅ Successfully connected via v1 API")
+                    print(f"   Found {len(existing_webhooks)} existing webhook(s)")
+                    api_used = 'v1'
+                    api_url = api_url_v1
+                    headers = headers_v1
+                elif response.status_code in [401, 403]:
+                    error_data = response.json() if response.text else {}
+                    error_msg = error_data.get('message', 'Authentication failed')
+                    print(f"❌ v1 API authentication failed: {error_msg}")
+                    print(f"🔄 Trying v2 API format as fallback...")
+                    
+                    # Try v2 as fallback
+                    response = requests.get(api_url_v2, headers=headers_v2, timeout=10)
+                    if response.status_code == 200:
+                        data = response.json()
+                        existing_webhooks = data.get('webhooks', data.get('data', []))
+                        print(f"✅ Successfully connected via v2 API")
+                        print(f"   Found {len(existing_webhooks)} existing webhook(s)")
+                        api_used = 'v2'
+                        api_url = api_url_v2
+                        headers = headers_v2
+                    else:
+                        error_data = response.json() if response.text else {}
+                        error_msg = error_data.get('message', 'Authentication failed')
+                        print(f"\n❌ All authentication methods failed")
+                        print(f"   Error: {error_msg}")
+                        print(f"\n💡 Troubleshooting:")
+                        print(f"   1. Verify CAL_COM_API_KEY is correct: {self.cal_com_api_key[:20]}...")
+                        print(f"   2. Check API key in Cal.com: https://app.cal.com/settings/developer/api-keys")
+                        print(f"   3. Ensure API key has webhook management permissions")
+                        print(f"   4. Try regenerating the API key in Cal.com")
+                        return {'success': False, 'error': f'Authentication failed: {error_msg}'}
+                else:
+                    print(f"⚠️  Unexpected response (status: {response.status_code}): {response.text[:200]}")
+                    return {'success': False, 'error': f'Unexpected response: {response.status_code}'}
             else:
-                print(f"⚠️  Could not list webhooks: {response.text}")
+                print(f"⚠️  API key format not recognized - trying v2 API format")
+                print(f"   Expected format: cal_live_xxx or cal_test_xxx for v1")
+                api_url = api_url_v2
+                headers = headers_v2
+                api_used = 'v2'
+                
+                response = requests.get(api_url, headers=headers, timeout=10)
+                if response.status_code == 200:
+                    data = response.json()
+                    existing_webhooks = data.get('webhooks', data.get('data', []))
+                    print(f"✅ Successfully connected via v2 API")
+                    print(f"   Found {len(existing_webhooks)} existing webhook(s)")
+                elif response.status_code in [401, 403]:
+                    error_data = response.json() if response.text else {}
+                    error_msg = error_data.get('message', 'Authentication failed')
+                    print(f"❌ v2 API authentication failed: {error_msg}")
+                    print(f"\n💡 Troubleshooting:")
+                    print(f"   1. Verify CAL_COM_API_KEY is correct")
+                    print(f"   2. Check API key format in Cal.com settings")
+                    print(f"   3. Ensure API key has webhook management permissions")
+                    return {'success': False, 'error': f'Authentication failed: {error_msg}'}
+                else:
+                    print(f"⚠️  Unexpected response (status: {response.status_code}): {response.text[:200]}")
+                    return {'success': False, 'error': f'Unexpected response: {response.status_code}'}
+            
+            # Check if webhook already exists and if it's safe to update
+            for webhook in existing_webhooks:
+                current_webhook_url = webhook.get('subscriberUrl', '')
+                webhook_id = webhook.get('id')
+                
+                if current_webhook_url == self.cal_com_webhook_url:
+                    print(f"✅ Webhook already exists with correct URL (ID: {webhook_id})")
+                    
+                    # Update webhook events and secret
+                    # For v1, need to include apiKey in URL
+                    if api_used == 'v1':
+                        update_url = f"https://api.cal.com/v1/webhooks/{webhook_id}?apiKey={self.cal_com_api_key}"
+                    else:
+                        update_url = f"{api_url}/{webhook_id}"
+                    update_data = {
+                        'eventTriggers': events,
+                        'secret': self.cal_com_webhook_secret
+                    }
+                    update_response = requests.patch(update_url, headers=headers, json=update_data, timeout=10)
+                    
+                    if update_response.status_code == 200:
+                        print(f"✅ Webhook updated successfully")
+                        return {'success': True, 'webhook_id': webhook_id, 'action': 'updated'}
+                    else:
+                        print(f"⚠️  Failed to update webhook: {update_response.text}")
+                        return {'success': False, 'error': f"Update failed: {update_response.text}"}
+                
+                # Check if we should update this webhook (environment-aware)
+                elif self._is_safe_to_update(current_webhook_url, self.cal_com_webhook_url):
+                    print(f"🔄 Found existing webhook with different URL (ID: {webhook_id})")
+                    print(f"   Current: {current_webhook_url}")
+                    print(f"   Target:  {self.cal_com_webhook_url}")
+                    
+                    # Update webhook URL, events, and secret
+                    # For v1, need to include apiKey in URL
+                    if api_used == 'v1':
+                        update_url = f"https://api.cal.com/v1/webhooks/{webhook_id}?apiKey={self.cal_com_api_key}"
+                    else:
+                        update_url = f"{api_url}/{webhook_id}"
+                    update_data = {
+                        'subscriberUrl': self.cal_com_webhook_url,
+                        'eventTriggers': events,
+                        'secret': self.cal_com_webhook_secret
+                    }
+                    update_response = requests.patch(update_url, headers=headers, json=update_data, timeout=10)
+                    
+                    if update_response.status_code == 200:
+                        print(f"✅ Webhook URL updated successfully")
+                        return {'success': True, 'webhook_id': webhook_id, 'action': 'updated'}
+                    else:
+                        print(f"⚠️  Failed to update webhook: {update_response.text}")
+                        return {'success': False, 'error': f"Update failed: {update_response.text}"}
+                
+                else:
+                    # Environment mismatch - skip this webhook but continue checking others
+                    print(f"⚠️  Skipping webhook {webhook_id} (environment mismatch)")
+                    print(f"   Current URL ({current_webhook_url}) is for different environment")
+                    print(f"   Will not overwrite production webhook")
+                    continue  # Continue checking other webhooks
+            
+            # After checking all webhooks, check if dev webhook exists
+            dev_webhook_exists = any(
+                'vani-dev.ngrok' in webhook.get('subscriberUrl', '').lower()
+                for webhook in existing_webhooks
+            )
+            
+            if dev_webhook_exists:
+                print(f"\n✅ Dev webhook already exists in Cal.com")
+                print(f"   Both dev and prod webhooks can coexist")
+                print(f"   No action needed - webhook is already configured")
+                return {'success': True, 'action': 'skipped', 'message': 'Dev webhook exists, prod webhook preserved'}
+                    
         except Exception as e:
             print(f"⚠️  Error checking existing webhooks: {e}")
+            import traceback
+            traceback.print_exc()
         
-        # Create new webhook
+        # If we get here, no matching webhook was found and no dev webhook exists
+        # Create new webhook for this environment
         print("\nCreating new webhook...")
         webhook_data = {
             'subscriberUrl': self.cal_com_webhook_url,
@@ -436,7 +735,22 @@ class WebhookConfigurator:
 
 def main():
     """Main function"""
-    configurator = WebhookConfigurator()
+    # Detect environment from environment variable or URL
+    environment = os.getenv('VANI_ENVIRONMENT', '').lower()
+    if environment not in ['dev', 'prod']:
+        # Try to detect from WEBHOOK_BASE_URL
+        webhook_url = os.getenv('WEBHOOK_BASE_URL', '')
+        if 'vani-dev.ngrok' in webhook_url.lower():
+            environment = 'dev'
+        elif 'vani.ngrok' in webhook_url.lower() and 'vani-dev' not in webhook_url.lower():
+            environment = 'prod'
+        else:
+            environment = 'dev'  # Default to dev for safety
+    
+    print(f"\n[*] Environment: {environment.upper()}")
+    print(f"[*] Webhook Base URL: {os.getenv('WEBHOOK_BASE_URL', 'Not set')}\n")
+    
+    configurator = WebhookConfigurator(environment=environment)
     results = configurator.configure_all()
     
     # Check if all succeeded

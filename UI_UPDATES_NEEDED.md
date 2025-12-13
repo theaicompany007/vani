@@ -392,3 +392,8 @@ function getIndustryBadge(industry) {
 
 
 
+
+
+
+
+

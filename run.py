@@ -289,9 +289,40 @@ def check_database():
         return False
 
 
+def detect_environment(ngrok_url: str = None) -> str:
+    """Detect if running in dev or prod environment"""
+    # Priority 1: Explicit environment variable
+    env = os.getenv('VANI_ENVIRONMENT', '').lower()
+    if env in ['dev', 'development', 'prod', 'production']:
+        return 'dev' if env in ['dev', 'development'] else 'prod'
+    
+    # Priority 2: Detect from ngrok URL or WEBHOOK_BASE_URL
+    url = ngrok_url or os.getenv('WEBHOOK_BASE_URL') or os.getenv('NGROK_DOMAIN')
+    if url:
+        url_lower = url.lower()
+        if 'vani-dev.ngrok' in url_lower:
+            return 'dev'
+        elif 'vani.ngrok' in url_lower and 'vani-dev' not in url_lower:
+            return 'prod'
+    
+    # Default: assume dev for safety (more permissive)
+    return 'dev'
+
+
 def configure_webhooks_with_url(webhook_url: str):
-    """Configure webhooks using the provided URL"""
+    """Configure webhooks using the provided URL with environment-aware safety checks"""
+    # Check if webhook updates should be skipped
+    skip_update = os.getenv('SKIP_WEBHOOK_UPDATE', 'false').lower() == 'true'
+    if skip_update:
+        print("  [*] SKIP_WEBHOOK_UPDATE is set - skipping webhook configuration")
+        return
+    
     try:
+        # Detect environment
+        environment = detect_environment(webhook_url)
+        print(f"  [*] Detected environment: {environment.upper()}")
+        print(f"  [*] Target webhook URL: {webhook_url}")
+        
         # Temporarily set WEBHOOK_BASE_URL if not already set
         original_url = os.getenv('WEBHOOK_BASE_URL')
         if not original_url:
@@ -302,7 +333,7 @@ def configure_webhooks_with_url(webhook_url: str):
         from scripts.configure_webhooks import WebhookConfigurator
         
         print(f"  [*] Configuring webhooks for: {webhook_url}")
-        configurator = WebhookConfigurator()
+        configurator = WebhookConfigurator(environment=environment)
         results = configurator.configure_all()
         
         # Restore original value
@@ -434,7 +465,11 @@ def start_ngrok_tunnel(port=5000):
         ngrok_path = shutil.which('ngrok')
         if not ngrok_path:
             print("  [!] ngrok not found in PATH")
+            print("      Install ngrok: https://ngrok.com/download")
+            print("      Or add ngrok to your PATH")
             return None
+        
+        print(f"  [*] Found ngrok at: {ngrok_path}")
         
         # Verify Flask is accessible before starting ngrok
         print("  Verifying Flask is accessible on port {}...".format(port))
@@ -463,79 +498,204 @@ def start_ngrok_tunnel(port=5000):
             print(f"  [!] Could not verify Flask: {e}")
             return None
         
-        # Check if ngrok is already running
+        # Check if ngrok is already running and get existing tunnels
+        existing_tunnels = []
         try:
             import requests
             response = requests.get('http://localhost:4040/api/tunnels', timeout=1)
             if response.status_code == 200:
                 data = response.json()
-                if data.get('tunnels'):
-                    return data['tunnels'][0].get('public_url')
+                tunnels = data.get('tunnels', [])
+                if tunnels:
+                    # Check if there's already a tunnel for port 5000
+                    for tunnel in tunnels:
+                        addr = tunnel.get('config', {}).get('addr', '')
+                        if f':{port}' in addr or addr.endswith(str(port)):
+                            public_url = tunnel.get('public_url')
+                            print(f"  [OK] Found existing ngrok tunnel for port {port}: {public_url}")
+                            return public_url
+                        existing_tunnels.append(tunnel)
+                    
+                    if existing_tunnels:
+                        print(f"  [!] Found {len(existing_tunnels)} existing tunnel(s), but none for port {port}")
+                        print("      Existing tunnels:")
+                        for tunnel in existing_tunnels:
+                            print(f"        - {tunnel.get('public_url')} -> {tunnel.get('config', {}).get('addr', 'unknown')}")
         except:
             pass
         
-        # Try to start ngrok using tunnel config
+        # Get domain from config - prioritize environment variables
+        domain = None
+        use_tunnel = False
+        
+        # Priority 1: NGROK_DOMAIN environment variable
+        domain = os.getenv('NGROK_DOMAIN')
+        if domain:
+            print(f"  [*] Found NGROK_DOMAIN from environment: {domain}")
+        
+        # Priority 2: Extract from WEBHOOK_BASE_URL
+        if not domain:
+            webhook_url = os.getenv('WEBHOOK_BASE_URL')
+            if webhook_url and 'ngrok.app' in webhook_url:
+                import re
+                match = re.search(r'https?://([^/]+)', webhook_url)
+                if match:
+                    domain = match.group(1)
+                    print(f"  [*] Extracted domain from WEBHOOK_BASE_URL: {domain}")
+        
+        # Priority 3: Load from config files
+        if not domain:
+            try:
+                from scripts.load_ngrok_config import load_ngrok_config
+                config = load_ngrok_config()
+                domain = config.get('domain')
+                if domain:
+                    print(f"  [*] Found domain from config: {domain}")
+            except Exception as e:
+                print(f"  [!] Could not load config: {e}")
+        
+        # Check ngrok.yml for tunnel config - but only use it if domain matches
         config_path = os.path.join(os.getenv('LOCALAPPDATA', ''), 'ngrok', 'ngrok.yml')
         if not os.path.exists(config_path):
             config_path = os.path.join(os.getenv('USERPROFILE', ''), '.ngrok2', 'ngrok.yml')
         
-        # Check if 'vani' tunnel is configured
-        use_tunnel = False
+        tunnel_domain = None
         if os.path.exists(config_path):
-            with open(config_path, 'r') as f:
-                content = f.read()
-                if 'vani:' in content or 'domain: vani.ngrok.app' in content:
-                    use_tunnel = True
+            try:
+                with open(config_path, 'r') as f:
+                    content = f.read()
+                    # Check for vani tunnel and extract its domain
+                    if 'vani:' in content:
+                        # Try to extract domain from tunnel config
+                        import re
+                        # Look for domain: vani.ngrok.app or domain: vani-dev.ngrok.app
+                        domain_match = re.search(r'vani:.*?domain:\s*([^\s\n]+)', content, re.DOTALL)
+                        if domain_match:
+                            tunnel_domain = domain_match.group(1).strip()
+                            print(f"  [*] Found 'vani' tunnel in ngrok.yml with domain: {tunnel_domain}")
+                        
+                        # Only use tunnel config if:
+                        # 1. No domain specified in environment (use tunnel as-is), OR
+                        # 2. Tunnel domain matches desired domain
+                        if not domain:
+                            # No domain specified, use tunnel config
+                            use_tunnel = True
+                            print("  [*] No domain specified, using 'vani' tunnel from ngrok.yml")
+                        elif tunnel_domain and tunnel_domain == domain:
+                            # Tunnel domain matches desired domain
+                            use_tunnel = True
+                            print(f"  [*] Tunnel domain matches desired domain, using 'vani' tunnel")
+                        else:
+                            # Tunnel domain doesn't match, use direct domain flag instead
+                            print(f"  [*] Tunnel domain ({tunnel_domain}) doesn't match desired domain ({domain})")
+                            print(f"      Using direct domain flag instead of tunnel config")
+                            use_tunnel = False
+            except Exception as e:
+                print(f"  [!] Error reading ngrok.yml: {e}")
         
         # Start ngrok
         if use_tunnel:
             # Use tunnel config
-            subprocess.Popen(
+            print("  [*] Starting ngrok with: ngrok start vani")
+            process = subprocess.Popen(
                 [ngrok_path, 'start', 'vani'],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
+            )
+        elif domain:
+            # Use domain flag
+            print(f"  [*] Starting ngrok with domain: {domain}")
+            print(f"      Command: ngrok http {port} --domain={domain}")
+            process = subprocess.Popen(
+                [ngrok_path, 'http', str(port), '--domain', domain],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
             )
         else:
-            # Use domain flag or random URL
-            expected_domain = get_expected_ngrok_url()
-            if expected_domain and 'ngrok.app' in expected_domain:
-                domain = expected_domain.replace('https://', '').replace('http://', '')
-                subprocess.Popen(
-                    [ngrok_path, 'http', str(port), '--domain', domain],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
-                )
-            else:
-                subprocess.Popen(
-                    [ngrok_path, 'http', str(port)],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
-                )
+            # Use random URL
+            print("  [*] Starting ngrok with random URL (no domain configured)")
+            print(f"      Command: ngrok http {port}")
+            process = subprocess.Popen(
+                [ngrok_path, 'http', str(port)],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
+            )
         
-        # Wait for ngrok to start
-        time.sleep(5)
+        # Check if process started successfully
+        time.sleep(2)  # Give ngrok more time to start and show errors
+        if process.poll() is not None:
+            # Process exited immediately - there was an error
+            stdout, stderr = process.communicate()
+            error_msg = stderr.decode('utf-8', errors='ignore') if stderr else stdout.decode('utf-8', errors='ignore') if stdout else 'Unknown error'
+            print(f"  [X] Ngrok failed to start!")
+            print(f"      Error: {error_msg}")
+            
+            # Provide specific guidance based on error
+            if 'authtoken' in error_msg.lower():
+                print("      💡 Run: ngrok config add-authtoken YOUR_TOKEN")
+            elif 'domain' in error_msg.lower() or 'reserved' in error_msg.lower():
+                print(f"      💡 Make sure domain '{domain}' is reserved in ngrok dashboard")
+                print("      💡 Go to: https://dashboard.ngrok.com/cloud-edge/domains")
+            elif 'exceeded' in error_msg.lower() or 'maximum' in error_msg.lower() or 'concurrent' in error_msg.lower() or 'ERR_NGROK_18021' in error_msg:
+                print("      💡 You've exceeded the maximum concurrent endpoints for your ngrok plan")
+                print("      💡 Solutions:")
+                print("         1. Stop other ngrok tunnels running elsewhere")
+                print("         2. Check running tunnels: http://localhost:4040/api/tunnels")
+                print("         3. Kill all ngrok processes: taskkill /F /IM ngrok.exe")
+                print("         4. Upgrade your ngrok plan: https://dashboard.ngrok.com/billing/choose-a-plan")
+                print("         5. Or use existing tunnel if one is already running for port 5000")
+            elif 'ERR_NGROK' in error_msg:
+                print("      💡 Check ngrok error docs: https://ngrok.com/docs/errors/")
+            return None
+        else:
+            print("  [OK] Ngrok process started")
         
-        # Get the URL
+        # Wait for ngrok to start and get URL
+        print("  [*] Waiting for ngrok to initialize...")
+        time.sleep(3)  # Give ngrok time to start
+        
+        # Get the URL from ngrok API
         try:
             import requests
-            for _ in range(10):  # Try up to 10 times
+            max_retries = 15
+            for attempt in range(max_retries):
                 try:
                     response = requests.get('http://localhost:4040/api/tunnels', timeout=2)
                     if response.status_code == 200:
                         data = response.json()
                         tunnels = data.get('tunnels', [])
                         if tunnels:
-                            return tunnels[0].get('public_url')
-                except:
-                    pass
-                time.sleep(1)
-        except:
-            pass
-        
-        return None
+                            # Prefer HTTPS tunnel
+                            https_tunnel = next((t for t in tunnels if t.get('proto') == 'https'), None)
+                            if https_tunnel:
+                                url = https_tunnel.get('public_url')
+                                print(f"  [OK] Ngrok tunnel active: {url}")
+                                return url
+                            # Fallback to any HTTP tunnel
+                            http_tunnel = next((t for t in tunnels if 'http' in t.get('proto', '')), None)
+                            if http_tunnel:
+                                url = http_tunnel.get('public_url')
+                                print(f"  [OK] Ngrok tunnel active: {url}")
+                                return url
+                except requests.exceptions.ConnectionError:
+                    # Ngrok API not ready yet
+                    if attempt < max_retries - 1:
+                        time.sleep(1)
+                    continue
+                except Exception as e:
+                    print(f"  [!] Error checking ngrok API: {e}")
+                    time.sleep(1)
+                    continue
+            
+            print(f"  [!] Ngrok started but URL not available after {max_retries} attempts")
+            print("      Check ngrok dashboard: http://localhost:4040")
+            return None
+        except Exception as e:
+            print(f"  [!] Could not get ngrok URL: {e}")
+            return None
         
     except Exception as e:
         print(f"  [!] Could not start ngrok: {e}")
@@ -660,16 +820,54 @@ def start_flask_app(ngrok_url=None):
     if is_docker_environment():
         print("\n[DOCKER] Skipping ngrok startup - managed externally")
         # ngrok_url should already be set from environment variable
+    elif os.getenv('SKIP_NGROK_AUTO_START', 'false').lower() == 'true':
+        print("\n[LOCAL] Skipping ngrok auto-start (SKIP_NGROK_AUTO_START=true)")
+        print("        Run ngrok separately: start-ngrok.bat or .\\scripts\\start_ngrok.ps1")
+        # Still check if ngrok is already running
+        try:
+            import requests
+            response = requests.get('http://localhost:4040/api/tunnels', timeout=2)
+            if response.status_code == 200:
+                data = response.json()
+                tunnels = data.get('tunnels', [])
+                if tunnels:
+                    http_tunnel = next((t for t in tunnels if t.get('proto') == 'https'), None)
+                    if not http_tunnel:
+                        http_tunnel = next((t for t in tunnels if 'http' in t.get('proto', '')), None)
+                    if http_tunnel:
+                        ngrok_url = http_tunnel.get('public_url')
+                        print(f"  [OK] Found existing ngrok tunnel: {ngrok_url}")
+        except:
+            pass
     else:
-        print("\nStarting ngrok tunnel...")
+        # Auto-start ngrok (default behavior)
+        # First check if ngrok is already running
+        try:
+            import requests
+            response = requests.get('http://localhost:4040/api/tunnels', timeout=2)
+            if response.status_code == 200:
+                data = response.json()
+                tunnels = data.get('tunnels', [])
+                if tunnels:
+                    http_tunnel = next((t for t in tunnels if t.get('proto') == 'https'), None)
+                    if not http_tunnel:
+                        http_tunnel = next((t for t in tunnels if 'http' in t.get('proto', '')), None)
+                    if http_tunnel:
+                        ngrok_url = http_tunnel.get('public_url')
+                        print(f"\n[OK] Found existing ngrok tunnel: {ngrok_url}")
+        except:
+            pass
+        
+        # If ngrok not found, try to start it
         if not ngrok_url:
+            print("\nStarting ngrok tunnel automatically...")
             ngrok_url = start_ngrok_tunnel(flask_port)
         
-        # Keep checking for ngrok URL
-        max_attempts = 20
+        # Keep checking for ngrok URL (but with shorter timeout for local dev)
+        max_attempts = 10  # Reduced from 20 for faster failure
         for attempt in range(max_attempts):
             if not ngrok_url:
-                time.sleep(2)
+                time.sleep(1)  # Reduced from 2 seconds
                 # Check ngrok but don't configure webhooks yet (will do after we confirm URL)
                 try:
                     import requests
@@ -687,8 +885,16 @@ def start_flask_app(ngrok_url=None):
                     pass
             if ngrok_url:
                 break
-            if attempt < max_attempts - 1:
+            if attempt < max_attempts - 1 and attempt % 2 == 0:  # Print every 2 attempts
                 print(f"  Waiting for ngrok... ({attempt + 1}/{max_attempts})")
+        
+        if not ngrok_url:
+            print("\n  [!] Ngrok not started automatically")
+            print("      To start ngrok manually:")
+            print("        - Run: start-ngrok.bat")
+            print("        - Or: .\\scripts\\start_ngrok.ps1")
+            print("        - Or: ngrok http 5000 --domain=vani-dev.ngrok.app")
+            print("      Flask will continue running without ngrok (webhooks won't work)")
     
     # Configure webhooks now that we have ngrok URL (skip in Docker - webhooks configured externally)
     if ngrok_url and not is_docker_environment():
@@ -843,7 +1049,17 @@ def main():
     # Step 3: Check ngrok (will start after Flask)
     if is_docker_environment():
         print("  [DOCKER] Running in container - ngrok managed externally")
-        webhook_url = os.getenv('WEBHOOK_BASE_URL', 'https://vani.ngrok.app')
+        webhook_url = os.getenv('WEBHOOK_BASE_URL')
+        if not webhook_url:
+            # Try to get from config
+            try:
+                from scripts.load_ngrok_config import load_ngrok_config
+                config = load_ngrok_config()
+                webhook_url = config.get('webhook_base_url')
+            except:
+                pass
+        if not webhook_url:
+            webhook_url = 'https://vani.ngrok.app'  # Fallback
         print(f"  [DOCKER] Webhook URL will be: {webhook_url}")
         ngrok_url = webhook_url
     else:

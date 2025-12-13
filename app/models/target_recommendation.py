@@ -15,6 +15,7 @@ class TargetRecommendation(BaseModel):
     seniority_score: float = Field(ge=0.0, le=1.0, description="Seniority level score 0-1")
     solution_fit: str = Field(description="onlyne_reputation | the_ai_company | both")
     confidence_score: float = Field(ge=0.0, le=1.0, description="Confidence in recommendation 0-1")
+    overall_score: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="Overall recommendation score (weighted combination of seniority and confidence)")
     identified_gaps: List[str] = Field(default_factory=list, description="Industry-specific gaps")
     recommended_pitch_angle: Optional[str] = None
     pain_points: List[str] = Field(default_factory=list, description="Industry-specific pain points")
@@ -23,10 +24,14 @@ class TargetRecommendation(BaseModel):
     knowledge_base_context: Optional[dict] = Field(default=None, description="RAG query results with case studies, services, insights")
     related_case_studies: Optional[List[str]] = Field(default_factory=list, description="IDs or titles of relevant case studies")
     relevant_services: Optional[List[str]] = Field(default_factory=list, description="Relevant service names or IDs")
+    relevant_platforms: Optional[List[str]] = Field(default_factory=list, description="Relevant platform names (VANI, Revenue Growth Platform, etc.)")
+    relevant_insights: Optional[List[str]] = Field(default_factory=list, description="Relevant industry insights")
     
     def to_dict(self) -> dict:
         """Convert to dictionary for API response"""
-        return self.dict(exclude_none=True)
+        data = self.dict(exclude_none=True)
+        # overall_score is now a proper field, so it will be included automatically
+        return data
     
     @classmethod
     def from_dict(cls, data: dict) -> 'TargetRecommendation':

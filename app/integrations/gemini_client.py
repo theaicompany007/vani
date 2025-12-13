@@ -12,7 +12,11 @@ class GeminiClient:
     
     def __init__(self):
         api_key = os.getenv('GEMINI_API_KEY')
-        model_name = os.getenv('GEMINI_MODEL', 'gemini-pro')
+        # Default to gemini-2.0-flash (widely available and stable)
+        # Fallback models in order of preference
+        default_model = 'gemini-2.0-flash'
+        fallback_models = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash-exp', 'gemini-1.5-flash', 'gemini-pro']
+        model_name = os.getenv('GEMINI_MODEL', default_model)
         notebook_lm_enabled = os.getenv('GEMINI_NOTEBOOK_LM_ENABLED', 'false').lower() == 'true'
         
         if not api_key:
@@ -21,18 +25,185 @@ class GeminiClient:
             self.client = None
             self.model = None
         else:
-            try:
-                genai.configure(api_key=api_key)
-                self.client = genai.GenerativeModel(model_name)
-                self.model = model_name
-                self.enabled = True
-                self.notebook_lm_enabled = notebook_lm_enabled
-                logger.info(f"Gemini client initialized with model: {model_name}")
-            except Exception as e:
-                logger.error(f"Failed to initialize Gemini client: {e}")
+            # Validate API key format
+            api_key = api_key.strip()
+            if not self._validate_api_key_format(api_key):
+                logger.error("GEMINI_API_KEY format is invalid. Expected format: starts with 'AIza' and ~39 characters")
+                logger.error(f"API key preview: {api_key[:8]}...{api_key[-4:] if len(api_key) > 12 else ''} (length: {len(api_key)})")
+                logger.error("Get a valid API key from: https://aistudio.google.com/app/apikey")
                 self.enabled = False
                 self.client = None
                 self.model = None
+                return
+            # Store and temporarily remove proxy environment variables
+            # Some libraries may try to use these and pass them as parameters
+            old_proxy_vars = {}
+            proxy_vars = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'ALL_PROXY', 'all_proxy']
+            for var in proxy_vars:
+                if var in os.environ:
+                    old_proxy_vars[var] = os.environ[var]
+                    del os.environ[var]
+            
+            try:
+                # Configure Gemini API - only pass supported parameters
+                # Explicitly avoid passing proxies or other unsupported parameters
+                # The library may try to read proxies from environment variables, so we ensure clean initialization
+                genai.configure(api_key=api_key)
+                
+                # Try to create model with configured name, fallback to alternatives if not available
+                models_to_try = [model_name] + [m for m in fallback_models if m != model_name]
+                client = None
+                working_model = None
+                
+                for test_model in models_to_try:
+                    try:
+                        # Create GenerativeModel - ensure no unsupported parameters
+                        # Some versions of google-generativeai may not support all Client parameters
+                        # We explicitly pass only the model name to avoid any parameter issues
+                        test_client = genai.GenerativeModel(test_model)
+                        # Actually test with a real API call to verify model is available
+                        # This catches cases where model object creation succeeds but model isn't actually available
+                        test_response = test_client.generate_content(
+                            "test",
+                            generation_config={'temperature': 0.1, 'max_output_tokens': 10}
+                        )
+                        # If we get here, the model works
+                        client = test_client
+                        working_model = test_model
+                        logger.info(f"Successfully initialized and tested Gemini model: {test_model}")
+                        break
+                    except Exception as model_error:
+                        error_str = str(model_error)
+                        if 'not found' in error_str.lower() or '404' in error_str or 'not supported' in error_str.lower():
+                            logger.debug(f"Model {test_model} not available: {error_str[:100]}")
+                            continue
+                        else:
+                            # Other errors (like API key issues) should be raised
+                            raise
+                
+                if not client or not working_model:
+                    raise ValueError(f"None of the attempted models are available: {models_to_try}")
+                
+                self.client = client
+                self.model = working_model
+                self.enabled = True
+                self.notebook_lm_enabled = notebook_lm_enabled
+                
+                if working_model != model_name:
+                    logger.warning(f"Requested model '{model_name}' not available, using '{working_model}' instead")
+                    logger.info(f"Gemini client initialized with model: {working_model}")
+                else:
+                    logger.info(f"Gemini client initialized with model: {model_name}")
+                logger.debug(f"API key format: {api_key[:8]}...{api_key[-4:]} (length: {len(api_key)})")
+            except (TypeError, ValueError) as e:
+                # Handle case where Client doesn't accept certain parameters (like proxies)
+                error_msg = str(e).lower()
+                if 'proxies' in error_msg or 'unexpected keyword argument' in error_msg:
+                    logger.error(f"Gemini client initialization failed due to unsupported parameter: {e}")
+                    logger.warning("This may be caused by environment variables or library version mismatch.")
+                    logger.warning("Proxies have been cleared. If error persists, check google-generativeai version.")
+                    # Proxies already cleared above, so just log and disable
+                    self.enabled = False
+                    self.client = None
+                    self.model = None
+                else:
+                    # Restore proxy environment variables before re-raising
+                    for var, value in old_proxy_vars.items():
+                        os.environ[var] = value
+                    raise
+            except Exception as e:
+                error_str = str(e)
+                # Check for API key invalid errors
+                if 'API key not valid' in error_str or 'API_KEY_INVALID' in error_str or 'API key' in error_str.lower():
+                    logger.error("=" * 60)
+                    logger.error("GEMINI API KEY VALIDATION FAILED")
+                    logger.error("=" * 60)
+                    logger.error(f"Error: {error_str}")
+                    logger.error(f"API key preview: {api_key[:8]}...{api_key[-4:] if len(api_key) > 12 else ''} (length: {len(api_key)})")
+                    logger.error("")
+                    logger.error("TROUBLESHOOTING STEPS:")
+                    logger.error("1. Verify your API key is correct and not expired")
+                    logger.error("2. Get a new API key from: https://aistudio.google.com/app/apikey")
+                    logger.error("3. Ensure the API key is properly set in your .env.local file")
+                    logger.error("4. Check that the API key has not been revoked or restricted")
+                    logger.error("5. Verify API key format: should start with 'AIza' and be ~39 characters")
+                    logger.error("=" * 60)
+                elif 'not found' in error_str.lower() or '404' in error_str or 'not supported' in error_str.lower():
+                    logger.error("=" * 60)
+                    logger.error("GEMINI MODEL NOT AVAILABLE")
+                    logger.error("=" * 60)
+                    logger.error(f"Error: {error_str}")
+                    logger.error(f"Requested model: {model_name}")
+                    logger.error("")
+                    logger.error("TROUBLESHOOTING STEPS:")
+                    logger.error("1. The model name may be incorrect or not available in your API version")
+                    logger.error("2. Try setting GEMINI_MODEL to one of these:")
+                    logger.error("   - gemini-1.5-flash (recommended, fast and available)")
+                    logger.error("   - gemini-pro (stable, widely available)")
+                    logger.error("   - gemini-1.5-pro-latest (if available)")
+                    logger.error("3. List available models by running:")
+                    logger.error("   python -c \"import google.generativeai as genai; genai.configure(api_key='YOUR_KEY'); [print(m.name) for m in genai.list_models()]\"")
+                    logger.error("4. Check Google AI Studio for current model availability")
+                    logger.error("=" * 60)
+                else:
+                    logger.error(f"Failed to initialize Gemini client: {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
+                self.enabled = False
+                self.client = None
+                self.model = None
+            finally:
+                # Always restore proxy environment variables
+                for var, value in old_proxy_vars.items():
+                    os.environ[var] = value
+    
+    def _validate_api_key_format(self, api_key: str) -> bool:
+        """
+        Validate Gemini API key format
+        
+        Args:
+            api_key: The API key to validate
+            
+        Returns:
+            True if format looks valid, False otherwise
+        """
+        if not api_key:
+            return False
+        
+        # Gemini API keys typically start with 'AIza' and are around 39 characters
+        # Allow some flexibility in length (35-45 characters) but require 'AIza' prefix
+        if not api_key.startswith('AIza'):
+            return False
+        
+        if len(api_key) < 35 or len(api_key) > 45:
+            logger.warning(f"API key length ({len(api_key)}) is outside typical range (35-45 characters)")
+            # Don't fail on length alone, but warn
+        
+        return True
+    
+    def get_available_models(self) -> List[str]:
+        """
+        List all available Gemini models for this API key
+        
+        Returns:
+            List of available model names
+        """
+        if not self.enabled:
+            return []
+        
+        try:
+            models = genai.list_models()
+            available = []
+            for model in models:
+                # Only include models that support generateContent
+                if 'generateContent' in model.supported_generation_methods:
+                    # Extract just the model name (e.g., "models/gemini-pro" -> "gemini-pro")
+                    model_name = model.name.split('/')[-1] if '/' in model.name else model.name
+                    available.append(model_name)
+            return available
+        except Exception as e:
+            logger.error(f"Failed to list available models: {e}")
+            return []
     
     def query_notebook_lm(
         self,
@@ -109,7 +280,23 @@ class GeminiClient:
             }
             
         except Exception as e:
-            logger.error(f"Error querying Gemini/Notebook LM: {e}")
+            error_str = str(e)
+            # Check for API key invalid errors
+            if 'API key not valid' in error_str or 'API_KEY_INVALID' in error_str or 'API key' in error_str.lower():
+                logger.error("=" * 60)
+                logger.error("GEMINI API KEY ERROR DURING QUERY")
+                logger.error("=" * 60)
+                logger.error(f"Error: {error_str}")
+                logger.error("")
+                logger.error("TROUBLESHOOTING STEPS:")
+                logger.error("1. Verify your API key is correct and not expired")
+                logger.error("2. Get a new API key from: https://aistudio.google.com/app/apikey")
+                logger.error("3. Ensure the API key is properly set in your .env.local file")
+                logger.error("4. Check that the API key has not been revoked or restricted")
+                logger.error("5. Restart the application after updating the API key")
+                logger.error("=" * 60)
+            else:
+                logger.error(f"Error querying Gemini/Notebook LM: {e}")
             return {
                 'customer_examples': [],
                 'company_profiles': [],
@@ -173,6 +360,9 @@ def get_gemini_client() -> GeminiClient:
     if _gemini_client is None:
         _gemini_client = GeminiClient()
     return _gemini_client
+
+
+
 
 
 

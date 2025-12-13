@@ -139,3 +139,8 @@ echo ""
 echo "View logs: docker logs vani -f"
 echo ""
 
+
+
+
+
+

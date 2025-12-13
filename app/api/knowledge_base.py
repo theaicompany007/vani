@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 knowledge_base_bp = Blueprint('knowledge_base', __name__)
 
 # Allowed file extensions
-ALLOWED_EXTENSIONS = {'pdf', 'txt'}
+ALLOWED_EXTENSIONS = {'pdf', 'txt', 'doc', 'docx'}
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 
 
@@ -63,6 +63,29 @@ def extract_text_from_txt(file_path):
         raise ValueError("Could not decode text file with any supported encoding")
     except Exception as e:
         logger.error(f"Error extracting text from TXT: {e}")
+        raise
+
+
+def extract_text_from_doc(file_path):
+    """Extract text from DOC/DOCX file"""
+    try:
+        import docx
+        doc = docx.Document(file_path)
+        text = ""
+        for paragraph in doc.paragraphs:
+            text += paragraph.text + "\n"
+        # Also extract text from tables
+        for table in doc.tables:
+            for row in table.rows:
+                for cell in row.cells:
+                    text += cell.text + " "
+                text += "\n"
+        return text
+    except ImportError:
+        logger.error("python-docx library not installed. Please install it with: pip install python-docx")
+        raise
+    except Exception as e:
+        logger.error(f"Error extracting text from DOC/DOCX: {e}")
         raise
 
 
@@ -184,7 +207,7 @@ def upload_documents():
             metadata = {}
         
         # Add user info to metadata
-        metadata['uploaded_by'] = user.get('email', 'unknown')
+        metadata['uploaded_by'] = getattr(user, 'email', 'unknown') if user else 'unknown'
         metadata['uploaded_at'] = str(Path().cwd())  # Will be replaced with timestamp
         
         # Parse tags
@@ -250,6 +273,8 @@ def upload_documents():
                 file_ext = filename.rsplit('.', 1)[1].lower()
                 if file_ext == 'pdf':
                     text = extract_text_from_pdf(str(temp_file))
+                elif file_ext in ['doc', 'docx']:
+                    text = extract_text_from_doc(str(temp_file))
                 else:  # txt
                     text = extract_text_from_txt(str(temp_file))
                 
@@ -364,7 +389,7 @@ def ingest_url():
             return jsonify({'error': 'RAG service not configured', 'success': False}), 500
         
         # Add user info to metadata
-        metadata['ingested_by'] = user.get('email', 'unknown')
+        metadata['ingested_by'] = getattr(user, 'email', 'unknown') if user else 'unknown'
         metadata['source'] = 'url_scraping'
         
         # Call RAG service ingest endpoint
@@ -406,5 +431,8 @@ def ingest_url():
     except Exception as e:
         logger.error(f"Error ingesting URL: {e}")
         return jsonify({'error': str(e), 'success': False}), 500
+
+
+
 
 
