@@ -31,3 +31,7 @@ COMMENT ON COLUMN contacts.last_target_created_at IS 'Timestamp when target was 
 
 
 
+
+
+
+

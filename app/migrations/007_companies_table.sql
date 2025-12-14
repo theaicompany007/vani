@@ -32,3 +32,7 @@ CREATE TRIGGER update_companies_updated_at BEFORE UPDATE ON companies
 
 
 
+
+
+
+

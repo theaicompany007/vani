@@ -2,6 +2,7 @@
 from flask import Blueprint, request, jsonify, current_app
 import logging
 import json
+import os
 from app.models.targets import Target, TargetStatus
 from app.models.target_recommendation import TargetRecommendation
 from app.supabase_client import get_supabase_client
@@ -10,6 +11,7 @@ from app.services.target_identification import get_target_identification_service
 from app.services.industry_context import get_industry_context
 from app.integrations.rag_client import get_rag_client
 from app.integrations.gemini_client import get_gemini_client
+from app.integrations.redis_client import cache_response, invalidate_cache
 from datetime import datetime
 from uuid import UUID
 
@@ -21,6 +23,7 @@ targets_bp = Blueprint('targets', __name__)
 @targets_bp.route('/api/targets', methods=['GET'])
 @require_auth
 @require_use_case('target_management')
+@cache_response(ttl=300, key_prefix='targets')  # Cache for 5 minutes
 def list_targets():
     """List all targets with optional filters and industry-based access control"""
     try:
@@ -51,8 +54,8 @@ def list_targets():
         limit = int(request.args.get('limit', 100))
         offset = int(request.args.get('offset', 0))
         
-        # Build query with industry filtering
-        query = supabase.table('targets').select('*, contacts(industry), companies(industry)')
+        # Build query with industry filtering - include industry name via JOIN
+        query = supabase.table('targets').select('*, contacts(industry), companies(industry), industries(id, name)')
         
         # For industry filtering, we'll filter after fetching to handle derived industry from contacts/companies
         # But we can optimize by pre-filtering on industry_id if available
@@ -66,6 +69,8 @@ def list_targets():
         query = query.order('created_at', desc=True).limit(limit * 2).offset(offset)  # Fetch more to filter
         response = query.execute()
         
+        # Deduplicate at database level: group by company_name + contact_name + role
+        seen_targets = {}  # key: (company_name, contact_name, role) -> target
         targets = []
         logger.debug(f"list_targets: Fetched {len(response.data)} targets from database before filtering")
         
@@ -151,11 +156,44 @@ def list_targets():
                     if company_response.data:
                         target_dict['company'] = company_response.data[0]
                 
-                # Add industry information
+                # Add industry information - ALWAYS fetch industry name if industry_id exists
                 if target_industry_id:
                     target_dict['industry_id'] = target_industry_id
+                    # Always fetch industry name to ensure it's available
+                    try:
+                        industry_response = supabase.table('industries').select('id, name').eq('id', target_industry_id).limit(1).execute()
+                        if industry_response.data and len(industry_response.data) > 0:
+                            target_dict['industry'] = industry_response.data[0]['name']
+                            logger.debug(f"Target {target_dict.get('company_name', 'Unknown')}: Added industry name '{target_dict['industry']}' from industry_id={target_industry_id}")
+                        else:
+                            logger.warning(f"Target {target_dict.get('company_name', 'Unknown')}: industry_id={target_industry_id} found but no industry name in database")
+                    except Exception as e:
+                        logger.error(f"Error fetching industry name for target {target_dict.get('company_name', 'Unknown')}: {e}")
                 
-                targets.append(target_dict)
+                # Deduplication: Check if we've seen this company+contact+role combination
+                company_name = target_dict.get('company_name', '').lower().strip()
+                contact_name = target_dict.get('contact_name', '').lower().strip()
+                role = target_dict.get('role', '').lower().strip()
+                dedup_key = (company_name, contact_name, role)
+                
+                if dedup_key in seen_targets:
+                    # Duplicate found - keep the one with more complete data or newer ID
+                    existing = seen_targets[dedup_key]
+                    existing_data_score = len(str(existing.get('email', ''))) + len(str(existing.get('phone', ''))) + len(str(existing.get('pain_point', '')))
+                    new_data_score = len(str(target_dict.get('email', ''))) + len(str(target_dict.get('phone', ''))) + len(str(target_dict.get('pain_point', '')))
+                    
+                    if new_data_score > existing_data_score or target_dict.get('id', '') > existing.get('id', ''):
+                        # Replace with better/newer target
+                        targets.remove(existing)
+                        targets.append(target_dict)
+                        seen_targets[dedup_key] = target_dict
+                        logger.debug(f"Replaced duplicate target: {company_name} - {contact_name} ({role})")
+                    else:
+                        logger.debug(f"Skipped duplicate target: {company_name} - {contact_name} ({role})")
+                else:
+                    # New unique target
+                    targets.append(target_dict)
+                    seen_targets[dedup_key] = target_dict
                 
                 if len(targets) >= limit:
                     break
@@ -260,6 +298,11 @@ def create_target():
         
         if response.data:
             created_target = Target.from_dict(response.data[0])
+            
+            # Invalidate cache for targets (all variations)
+            invalidate_cache('targets:*')
+            logger.debug("Cache invalidated after target creation")
+            
             return jsonify({
                 'success': True,
                 'target': created_target.to_dict()
@@ -300,7 +343,7 @@ def get_target(target_id):
         return jsonify({'error': str(e)}), 500
 
 
-@targets_bp.route('/api/targets/<target_id>', methods=['PUT'])
+@targets_bp.route('/api/targets/<target_id>', methods=['PUT', 'PATCH'])
 @require_auth
 @require_use_case('target_management')
 def update_target(target_id):
@@ -341,6 +384,11 @@ def update_target(target_id):
         
         if response.data:
             target = Target.from_dict(response.data[0])
+            
+            # Invalidate cache for targets (all variations)
+            invalidate_cache('targets:*')
+            logger.debug("Cache invalidated after target update")
+            
             return jsonify({
                 'success': True,
                 'target': target.to_dict()
@@ -542,6 +590,10 @@ def import_targets():
     try:
         from app.integrations.google_sheets_client import GoogleSheetsClient
         
+        # Get sheet name from request (optional)
+        data = request.get_json() or {}
+        sheet_name = data.get('sheet_name')  # Can be None to use default
+        
         try:
             sheets_client = GoogleSheetsClient()
         except ValueError as e:
@@ -552,13 +604,14 @@ def import_targets():
             }), 400
         
         try:
-            targets_data = sheets_client.import_targets()
+            targets_data = sheets_client.import_targets(sheet_name=sheet_name)
         except Exception as e:
             error_msg = str(e)
-            if 'index' in error_msg.lower() or 'empty' in error_msg.lower():
+            if 'index' in error_msg.lower() or 'empty' in error_msg.lower() or 'not found' in error_msg.lower():
+                sheet_display = sheet_name or 'Targets'
                 return jsonify({
                     'success': False,
-                    'error': 'Google Sheets is empty or "Targets" sheet not found. Please ensure the sheet exists and has data.'
+                    'error': f'Google Sheets is empty or "{sheet_display}" sheet not found. Please ensure the sheet exists and has data.'
                 }), 400
             raise
         
@@ -578,10 +631,37 @@ def import_targets():
                 # Skip empty rows
                 if not target_data or not any(target_data.values()):
                     continue
+                
+                # Clean UUID fields: convert empty strings to None and validate
+                uuid_fields = ['industry_id', 'contact_id', 'company_id']
+                for field in uuid_fields:
+                    if field in target_data:
+                        value = target_data[field]
+                        # Convert empty string, whitespace-only, or invalid UUID - remove from dict
+                        if not value or (isinstance(value, str) and value.strip() == ''):
+                            # Remove empty UUID fields completely (don't pass to Target model)
+                            target_data.pop(field)
+                        elif isinstance(value, str):
+                            # Validate UUID format if value is provided
+                            try:
+                                UUID(value.strip())
+                                target_data[field] = value.strip()
+                            except (ValueError, AttributeError):
+                                # Invalid UUID format, remove it
+                                logger.debug(f"Invalid UUID format for {field}: {value}, removing")
+                                target_data.pop(field)
                     
                 target = Target(**target_data)
                 target_dict = target.to_dict()
                 target_dict.pop('id', None)
+                
+                # Final safety check: ensure no empty strings in UUID fields (defensive)
+                for field in uuid_fields:
+                    if field in target_dict:
+                        value = target_dict[field]
+                        if isinstance(value, str) and (not value or value.strip() == ''):
+                            # Remove empty string fields
+                            target_dict.pop(field)
                 
                 supabase.table('targets').insert(target_dict).execute()
                 imported_count += 1
@@ -589,10 +669,16 @@ def import_targets():
                 logger.warning(f"Failed to import target {target_data.get('company_name', 'Unknown')}: {e}")
                 continue
         
+        # Invalidate cache after import
+        if imported_count > 0:
+            invalidate_cache('targets:*')
+            logger.debug(f"Cache invalidated after importing {imported_count} targets")
+        
         return jsonify({
             'success': True,
             'imported': imported_count,
-            'total': len(targets_data)
+            'total': len(targets_data),
+            'sheet_name': sheet_name or 'default'
         })
         
     except Exception as e:
@@ -604,6 +690,57 @@ def import_targets():
                 'error': 'Google Sheets not configured. Please add credentials to .env.local'
             }), 400
         return jsonify({'error': error_msg}), 500
+
+
+@targets_bp.route('/api/targets/sheets/list', methods=['GET'])
+@require_auth
+@require_use_case('sheets_import_export')
+def list_sheets():
+    """List all available sheet names in the Google Spreadsheet"""
+    try:
+        from app.integrations.google_sheets_client import GoogleSheetsClient
+        
+        try:
+            sheets_client = GoogleSheetsClient()
+        except ValueError as e:
+            return jsonify({
+                'success': False,
+                'error': 'Google Sheets credentials not found. Please configure GOOGLE_SHEETS_CREDENTIALS_PATH and GOOGLE_SHEETS_SPREADSHEET_ID in .env.local'
+            }), 400
+        
+        try:
+            sheet_names = sheets_client.list_sheets()
+            return jsonify({
+                'success': True,
+                'sheets': sheet_names
+            })
+        except Exception as e:
+            logger.error(f"Error listing sheets: {e}")
+            return jsonify({
+                'success': False,
+                'error': str(e)
+            }), 500
+        
+    except Exception as e:
+        logger.error(f"Error listing sheets: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@targets_bp.route('/api/targets/sheets/url', methods=['GET'])
+@require_auth
+@require_use_case('sheets_import_export')
+def get_sheet_url():
+    """Get Google Spreadsheet URL"""
+    spreadsheet_id = os.getenv('GOOGLE_SHEETS_SPREADSHEET_ID')
+    if not spreadsheet_id:
+        return jsonify({
+            'success': False,
+            'error': 'Google Sheets not configured. Please configure GOOGLE_SHEETS_SPREADSHEET_ID in .env.local'
+        }), 400
+    return jsonify({
+        'success': True,
+        'url': f'https://docs.google.com/spreadsheets/d/{spreadsheet_id}'
+    })
 
 
 @targets_bp.route('/api/targets/<target_id>', methods=['DELETE'])
@@ -658,6 +795,10 @@ def delete_target(target_id):
         
         # Delete target
         delete_response = supabase.table('targets').delete().eq('id', target_id).execute()
+        
+        # Invalidate cache for targets (all variations)
+        invalidate_cache('targets:*')
+        logger.debug("Cache invalidated after target deletion")
         
         return jsonify({
             'success': True,

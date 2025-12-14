@@ -397,3 +397,7 @@ function getIndustryBadge(industry) {
 
 
 
+
+
+
+

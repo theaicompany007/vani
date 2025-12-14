@@ -20,14 +20,17 @@ class PitchGenerator:
             from app.integrations.rag_client import get_rag_client
             from app.integrations.gemini_client import get_gemini_client
             from app.services.industry_context import get_industry_context
+            from app.services.industry_persona_mapping import IndustryPersonaMapping
             self.rag_client = get_rag_client()
             self.gemini_client = get_gemini_client()
             self.get_industry_context = get_industry_context  # Store function reference, don't call it yet
+            self.persona_mapping = IndustryPersonaMapping
         except ImportError:
             logger.warning("RAG/Gemini clients not available. Pitch generation will use OpenAI only.")
             self.rag_client = None
             self.gemini_client = None
             self.get_industry_context = None
+            self.persona_mapping = None
 
     def generate_pitch(self, target_data: Dict[str, Any], industry_name: str) -> Dict[str, Any]:
         """
@@ -40,11 +43,22 @@ class PitchGenerator:
         pain_point = target_data.get('pain_point', 'general distribution challenges')
         pitch_angle = target_data.get('pitch_angle', 'improve last-mile reach')
         
-        # Gather industry context
+        # Gather industry context and persona mapping
         industry_config = {}
+        persona_context = None
         rag_insights = ""
         gemini_insights = ""
         
+        # Get VANI Persona for this industry
+        if self.persona_mapping and industry_name:
+            try:
+                persona_context = self.persona_mapping.get_industry_context(industry_name)
+                if persona_context:
+                    logger.info(f"Using VANI Persona: {persona_context.vani_persona} for industry: {industry_name}")
+            except Exception as e:
+                logger.warning(f"Failed to get persona context for {industry_name}: {e}")
+        
+        # Get traditional industry context (for backward compatibility)
         if self.get_industry_context and industry_name:
             try:
                 industry_context_obj = self.get_industry_context(industry_name)
@@ -62,6 +76,17 @@ class PitchGenerator:
                 import traceback
                 logger.warning(traceback.format_exc())
                 industry_config = {}
+        
+        # Merge persona context pain points with industry config
+        if persona_context:
+            # Use persona pain points if available, otherwise fall back to industry config
+            persona_pain_points = persona_context.pain_points if persona_context.pain_points else []
+            if persona_pain_points:
+                industry_config['pain_points'] = persona_pain_points
+                industry_config['persona'] = persona_context.vani_persona
+                industry_config['persona_description'] = persona_context.persona_description
+                industry_config['use_case_examples'] = persona_context.use_case_examples
+                industry_config['value_proposition_template'] = persona_context.value_proposition_template
         
         # Query RAG for industry-specific case studies and solutions
         if self.rag_client and self.rag_client.enabled:
@@ -89,27 +114,39 @@ class PitchGenerator:
             except Exception as e:
                 logger.warning(f"Gemini query failed: {e}")
         
-        # Build enhanced system prompt with industry context
+        # Build enhanced system prompt with industry context and persona
         industry_pain_points = industry_config.get('pain_points', [])
         industry_pitch_angles = industry_config.get('pitch_angles', [])
+        vani_persona = industry_config.get('persona', 'AI Sales Assistant')
+        persona_description = industry_config.get('persona_description', 'AI-powered sales automation')
+        use_case_examples = industry_config.get('use_case_examples', [])
+        value_prop_template = industry_config.get('value_proposition_template', 'AI-powered automation for operational efficiency')
         
         system_prompt = f"""
         You are an expert sales strategist for "Project VANI" (Virtual Agent Network Interface), an Agentic AI Voice Sales Officer.
         Your goal is to generate a compelling, industry-specific pitch for a B2B client.
         The pitch should be structured into:
-        - title: A catchy, benefit-driven title.
-        - problem: A concise description of the market reality and the client's pain point.
-        - solution: How VANI solves this problem, emphasizing "Don't App. Just Call."
+        - title: A catchy, benefit-driven title that includes the VANI Persona name: "{vani_persona}".
+        - problem: A concise description of the market reality and the client's pain point, specific to the {industry_name} industry.
+        - solution: How VANI solves this problem using the "{vani_persona}" persona. Emphasize "Don't App. Just Call." where relevant.
         - hit_list: A specific, customized "Hit List" card for the target company, highlighting their pain and VANI's pitch. Format as readable text, NOT JSON. Use clear, engaging language.
-        - trojan_horse: Explain the low-risk pilot approach ("Give us 5,000 'Dead Stores'").
+        - trojan_horse: Explain the low-risk pilot approach (e.g., "Give us 5,000 'Dead Stores'" for distribution, or similar industry-appropriate pilot).
 
         The client operates in the {industry_name} industry.
         
+        VANI Persona: {vani_persona}
+        Persona Description: {persona_description}
+        
         Industry Context:
         - Common pain points: {', '.join(industry_pain_points[:5]) if industry_pain_points else 'General business challenges'}
+        - Use case examples: {', '.join(use_case_examples[:3]) if use_case_examples else 'Industry-specific automation'}
+        - Value proposition template: {value_prop_template}
         - Effective pitch angles: {', '.join(industry_pitch_angles[:3]) if industry_pitch_angles else 'Value-driven solutions'}
         
-        IMPORTANT: The hit_list should be formatted as readable, engaging text (like a marketing card description), NOT as a JSON object. Use natural language.
+        IMPORTANT: 
+        - The title should include "{vani_persona} for [Company Name]" format
+        - The hit_list should be formatted as readable, engaging text (like a marketing card description), NOT as a JSON object. Use natural language.
+        - The solution should emphasize how the {vani_persona} persona specifically addresses {company_name}'s challenges.
         
         Return your response as a JSON object with these exact keys: title, problem, solution, hit_list, trojan_horse.
         """

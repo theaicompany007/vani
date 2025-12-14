@@ -13,3 +13,7 @@ WHERE report IS NOT NULL;
 COMMENT ON COLUMN ai_target_search_results.report IS 'Stores the generated markdown report for this search';
 COMMENT ON COLUMN ai_target_search_results.report_generated_at IS 'Timestamp when the report was generated';
 
+
+
+
+

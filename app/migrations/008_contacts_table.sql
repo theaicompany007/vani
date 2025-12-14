@@ -43,3 +43,7 @@ CREATE TRIGGER update_contacts_updated_at BEFORE UPDATE ON contacts
 
 
 
+
+
+
+

@@ -31,19 +31,25 @@ class GoogleSheetsClient:
         self.targets_sheet_name = os.getenv('GOOGLE_SHEETS_TARGETS_SHEET_NAME', 'Targets')
         self.activities_sheet_name = os.getenv('GOOGLE_SHEETS_ACTIVITIES_SHEET_NAME', 'Activities')
     
-    def import_targets(self) -> List[Dict[str, Any]]:
+    def import_targets(self, sheet_name: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Import targets from Google Sheets
+        
+        Args:
+            sheet_name: Optional sheet name. If not provided, uses default from env var or "Targets"
         
         Returns:
             List of target dictionaries
         """
         try:
+            # Use provided sheet name or fall back to default
+            target_sheet = sheet_name or self.targets_sheet_name
+            
             # Check if worksheet exists
             try:
-                worksheet = self.spreadsheet.worksheet(self.targets_sheet_name)
+                worksheet = self.spreadsheet.worksheet(target_sheet)
             except gspread.exceptions.WorksheetNotFound:
-                raise ValueError(f'Worksheet "{self.targets_sheet_name}" not found in spreadsheet')
+                raise ValueError(f'Worksheet "{target_sheet}" not found in spreadsheet')
             
             records = worksheet.get_all_records()
             
@@ -51,13 +57,27 @@ class GoogleSheetsClient:
             records = [r for r in records if r and any(str(v).strip() for v in r.values() if v)]
             
             if not records:
-                raise ValueError(f'No data found in "{self.targets_sheet_name}" sheet')
+                raise ValueError(f'No data found in "{target_sheet}" sheet')
             
-            logger.info(f"Imported {len(records)} targets from Google Sheets")
+            logger.info(f"Imported {len(records)} targets from Google Sheets (sheet: {target_sheet})")
             return records
             
         except Exception as e:
             logger.error(f"Failed to import targets: {str(e)}")
+            raise
+    
+    def list_sheets(self) -> List[str]:
+        """
+        List all available sheet names in the spreadsheet
+        
+        Returns:
+            List of sheet names
+        """
+        try:
+            worksheets = self.spreadsheet.worksheets()
+            return [ws.title for ws in worksheets]
+        except Exception as e:
+            logger.error(f"Failed to list sheets: {str(e)}")
             raise
     
     def export_targets(self, targets: List[Dict[str, Any]]) -> bool:

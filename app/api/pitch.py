@@ -11,7 +11,8 @@ from app.supabase_client import get_supabase_client
 from app.auth import require_auth, require_use_case, get_current_industry
 from app.utils.signature_formatter import SignatureFormatter
 from datetime import datetime
-from flask import g
+from flask import g, send_file
+import io
 
 logger = logging.getLogger(__name__)
 
@@ -373,6 +374,11 @@ def send_pitch(pitch_id):
                 target['linkedin_url'] = contact.get('linkedin') or target.get('linkedin_url')
                 target['contact_name'] = contact.get('name') or target.get('contact_name')
         
+        # Get edited content from request, or use generated content as fallback
+        edited_message = data.get('message')  # User-edited message
+        edited_subject = data.get('subject')  # User-edited subject (for email)
+        edited_from = data.get('from')  # User-edited from name (for email)
+        
         # Get generated_content, or reconstruct from individual columns
         generated_content = generated_pitch_data.get('generated_content', {})
         if not generated_content:
@@ -386,17 +392,49 @@ def send_pitch(pitch_id):
         if channel == 'email':
             from app.integrations.resend_client import ResendClient
             resend_client = ResendClient()
-            subject = f"A Strategic Pitch for {target.get('company_name', 'Unknown')} from Project VANI"
+            
+            # Use edited subject or fallback to default
+            subject = edited_subject or f"A Strategic Pitch for {target.get('company_name', 'Unknown')} from Project VANI"
+            
+            # Use edited from name or fallback to signature
+            from_name = edited_from or (signature.get('from_name') if signature else 'Project VANI Team')
+            from_email = signature.get('from_email') if signature else None
+            
             to_email = target.get('email')
             if not to_email:
                 return jsonify({'error': 'Target email not available'}), 400
             
-            # Append signature to HTML if available
-            final_html = generated_html
-            if signature_text:
-                final_html = f"{generated_html}\n{signature_text}"
+            # Use edited message or convert generated HTML to plain text
+            if edited_message:
+                # Convert markdown to HTML for email
+                try:
+                    import markdown
+                    message_html = markdown.markdown(edited_message, extensions=['nl2br', 'fenced_code'])
+                except ImportError:
+                    # Fallback: simple markdown conversion if markdown library not available
+                    message_html = edited_message.replace('\n\n', '</p><p>').replace('\n', '<br>')
+                    message_html = message_html.replace('**', '<strong>').replace('**', '</strong>')
+                    message_html = message_html.replace('*', '<em>').replace('*', '</em>')
+                    message_html = f'<p>{message_html}</p>'
+                except Exception as e:
+                    logger.warning(f"Markdown conversion failed: {e}, using simple conversion")
+                    message_html = edited_message.replace('\n\n', '</p><p>').replace('\n', '<br>')
+                    message_html = message_html.replace('**', '<strong>').replace('**', '</strong>')
+                    message_html = message_html.replace('*', '<em>').replace('*', '</em>')
+                    message_html = f'<p>{message_html}</p>'
+            else:
+                message_html = generated_html
             
-            resend_client.send_email(to=to_email, subject=subject, html=final_html)
+            # Append signature to HTML if available
+            final_html = message_html
+            if signature_text:
+                final_html = f"{message_html}\n{signature_text}"
+            
+            # Send email with from_name if provided
+            if from_email:
+                resend_client.send_email(to=to_email, subject=subject, html=final_html, from_email=from_email, from_name=from_name)
+            else:
+                resend_client.send_email(to=to_email, subject=subject, html=final_html)
             message = f"Email pitch sent to {to_email}"
         elif channel == 'whatsapp':
             from app.integrations.twilio_client import TwilioClient
@@ -410,14 +448,18 @@ def send_pitch(pitch_id):
             if not to_phone:
                 return jsonify({'error': 'Target phone not available'}), 400
             
-            # Build WhatsApp message from pitch content
-            contact_name = target.get('contact_name', 'there')
-            company_name = target.get('company_name', 'your company')
-            pitch_title = generated_content.get('title', 'Strategic Pitch')
-            pitch_problem = generated_content.get('problem', '')
-            pitch_solution = generated_content.get('solution', '')
-            
-            whatsapp_message = f"""Hi {contact_name}! 👋
+            # Use edited message or build from pitch content
+            if edited_message:
+                whatsapp_message = edited_message
+            else:
+                # Build WhatsApp message from pitch content
+                contact_name = target.get('contact_name', 'there')
+                company_name = target.get('company_name', 'your company')
+                pitch_title = generated_content.get('title', 'Strategic Pitch')
+                pitch_problem = generated_content.get('problem', '')
+                pitch_solution = generated_content.get('solution', '')
+                
+                whatsapp_message = f"""Hi {contact_name}! 👋
 
 I have a strategic pitch for {company_name} from Project VANI.
 
@@ -470,12 +512,16 @@ Would you be open to a quick conversation about how VANI can help {company_name}
             contact_name = target.get('contact_name', 'there')
             company_name = target.get('company_name', 'your company')
             
-            # Build message text from pitch content
-            pitch_title = generated_content.get('title', 'Strategic Pitch')
-            pitch_problem = generated_content.get('problem', '')
-            pitch_solution = generated_content.get('solution', '')
-            
-            linkedin_message = f"""Hi {contact_name},
+            # Use edited message or build from pitch content
+            if edited_message:
+                linkedin_message = edited_message
+            else:
+                # Build message text from pitch content
+                pitch_title = generated_content.get('title', 'Strategic Pitch')
+                pitch_problem = generated_content.get('problem', '')
+                pitch_solution = generated_content.get('solution', '')
+                
+                linkedin_message = f"""Hi {contact_name},
 
 I have a strategic pitch for {company_name} from Project VANI.
 
@@ -518,3 +564,263 @@ Would you be open to a quick conversation about how VANI can help {company_name}
     except Exception as e:
         logger.error(f"Error sending pitch {pitch_id} via {channel}: {e}")
         return jsonify({'error': str(e)}), 500
+
+@pitch_bp.route('/api/pitch/export-pdf/<uuid:pitch_id>', methods=['GET'])
+@require_auth
+@require_use_case('pitch_presentation')
+def export_pitch_pdf(pitch_id):
+    """Export pitch as PDF"""
+    from flask import current_app, send_file
+    import io
+    try:
+        from app.integrations.pitch_exporter import PitchExporter
+        
+        supabase = get_supabase_client(current_app)
+        if not supabase:
+            return jsonify({'error': 'Supabase not configured'}), 503
+        
+        # Get pitch data
+        pitch_response = supabase.table('generated_pitches').select('*, targets(*)').eq('id', pitch_id).limit(1).execute()
+        if not pitch_response.data:
+            return jsonify({'error': 'Pitch not found'}), 404
+        
+        pitch_data = pitch_response.data[0]
+        target = pitch_data.get('targets', {})
+        
+        # Reconstruct pitch content
+        generated_content = pitch_data.get('generation_metadata', {})
+        if not generated_content:
+            generated_content = {
+                'title': pitch_data.get('title', ''),
+                'problem': pitch_data.get('problem_statement', ''),
+                'solution': pitch_data.get('solution_description', ''),
+                'hit_list': pitch_data.get('hit_list_content', ''),
+                'trojan_horse': pitch_data.get('trojan_horse_strategy', '')
+            }
+        
+        company_name = target.get('company_name', 'Unknown Company')
+        contact_name = target.get('contact_name')
+        
+        # Generate PDF
+        pdf_bytes = PitchExporter.export_to_pdf(
+            pitch_content=generated_content,
+            company_name=company_name,
+            contact_name=contact_name
+        )
+        
+        # Return as file download
+        return send_file(
+            io.BytesIO(pdf_bytes),
+            mimetype='application/pdf',
+            as_attachment=True,
+            download_name=f'VANI_Pitch_{company_name.replace(" ", "_")}_{datetime.now().strftime("%Y%m%d")}.pdf'
+        )
+        
+    except ImportError as e:
+        logger.error(f"Export library not available: {e}")
+        return jsonify({'error': 'PDF export not available. Please install weasyprint.'}), 503
+    except Exception as e:
+        logger.error(f"Error exporting pitch PDF {pitch_id}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify({'error': str(e)}), 500
+
+@pitch_bp.route('/api/pitch/export-ppt/<uuid:pitch_id>', methods=['GET'])
+@require_auth
+@require_use_case('pitch_presentation')
+def export_pitch_ppt(pitch_id):
+    """Export pitch as PowerPoint"""
+    from flask import current_app, send_file
+    import io
+    try:
+        from app.integrations.pitch_exporter import PitchExporter
+        
+        supabase = get_supabase_client(current_app)
+        if not supabase:
+            return jsonify({'error': 'Supabase not configured'}), 503
+        
+        # Get pitch data
+        pitch_response = supabase.table('generated_pitches').select('*, targets(*)').eq('id', pitch_id).limit(1).execute()
+        if not pitch_response.data:
+            return jsonify({'error': 'Pitch not found'}), 404
+        
+        pitch_data = pitch_response.data[0]
+        target = pitch_data.get('targets', {})
+        
+        # Reconstruct pitch content
+        generated_content = pitch_data.get('generation_metadata', {})
+        if not generated_content:
+            generated_content = {
+                'title': pitch_data.get('title', ''),
+                'problem': pitch_data.get('problem_statement', ''),
+                'solution': pitch_data.get('solution_description', ''),
+                'hit_list': pitch_data.get('hit_list_content', ''),
+                'trojan_horse': pitch_data.get('trojan_horse_strategy', '')
+            }
+        
+        company_name = target.get('company_name', 'Unknown Company')
+        contact_name = target.get('contact_name')
+        
+        # Generate PowerPoint
+        pptx_bytes = PitchExporter.export_to_pptx(
+            pitch_content=generated_content,
+            company_name=company_name,
+            contact_name=contact_name
+        )
+        
+        # Return as file download
+        return send_file(
+            io.BytesIO(pptx_bytes),
+            mimetype='application/vnd.openxmlformats-officedocument.presentationml.presentation',
+            as_attachment=True,
+            download_name=f'VANI_Pitch_{company_name.replace(" ", "_")}_{datetime.now().strftime("%Y%m%d")}.pptx'
+        )
+        
+    except ImportError as e:
+        logger.error(f"Export library not available: {e}")
+        return jsonify({'error': 'PowerPoint export not available. Please install python-pptx.'}), 503
+    except Exception as e:
+        logger.error(f"Error exporting pitch PowerPoint {pitch_id}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify({'error': str(e)}), 500
+
+@pitch_bp.route('/api/pitch/industry-context/<industry>', methods=['GET'])
+@require_auth
+@require_use_case('pitch_presentation')
+def get_industry_context_api(industry):
+    """Get industry-specific context (persona, pain points, use cases)"""
+    try:
+        from urllib.parse import unquote
+        from app.services.industry_persona_mapping import IndustryPersonaMapping
+        
+        # Decode URL-encoded industry name
+        industry_decoded = unquote(industry)
+        logger.debug(f"Getting industry context for: {industry_decoded} (original: {industry})")
+        
+        # Pass supabase client to check for custom mappings
+        supabase = get_supabase_client(current_app)
+        persona_context = IndustryPersonaMapping.get_industry_context(industry_decoded, supabase_client=supabase)
+        
+        if not persona_context:
+            logger.warning(f"No persona context found for industry: {industry_decoded}")
+            # Return 200 with success=false instead of 404, so frontend can handle it gracefully
+            return jsonify({
+                'success': False,
+                'error': f'No persona mapping found for industry: {industry_decoded}',
+                'industry': industry_decoded,
+                'vani_persona': None
+            }), 200
+        
+        return jsonify({
+            'success': True,
+            'industry': industry_decoded,
+            'vani_persona': persona_context.vani_persona,
+            'persona_description': persona_context.persona_description,
+            'pain_points': persona_context.pain_points,
+            'use_case_examples': persona_context.use_case_examples,
+            'value_proposition_template': persona_context.value_proposition_template,
+            'common_use_cases': persona_context.common_use_cases
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting industry context for {industry}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'industry': industry
+        }), 500
+
+
+@pitch_bp.route('/api/pitch/industry-context/<industry>', methods=['PUT', 'PATCH'])
+@require_auth
+@require_use_case('pitch_presentation')
+def update_industry_context_api(industry):
+    """Update industry-specific persona mapping (pain points, use cases, value proposition)"""
+    from flask import current_app
+    from urllib.parse import unquote
+    from app.auth import get_current_user
+    
+    try:
+        supabase = get_supabase_client(current_app)
+        if not supabase:
+            return jsonify({'error': 'Supabase not configured'}), 503
+        
+        # Get current user for audit trail
+        user = get_current_user()
+        if not user:
+            return jsonify({'error': 'User not authenticated'}), 401
+        
+        # Decode URL-encoded industry name
+        industry_decoded = unquote(industry)
+        logger.info(f"Updating persona mapping for industry: {industry_decoded}")
+        
+        # Get request data
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+        
+        # Validate required fields
+        required_fields = ['vani_persona', 'pain_points', 'use_case_examples', 'value_proposition_template']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({'error': f'Missing required field: {field}'}), 400
+        
+        # Prepare update data
+        update_data = {
+            'industry_name': industry_decoded,
+            'vani_persona': data['vani_persona'],
+            'persona_description': data.get('persona_description', ''),
+            'pain_points': json.dumps(data['pain_points']) if isinstance(data['pain_points'], list) else data['pain_points'],
+            'use_case_examples': json.dumps(data['use_case_examples']) if isinstance(data['use_case_examples'], list) else data['use_case_examples'],
+            'value_proposition_template': data['value_proposition_template'],
+            'common_use_cases': json.dumps(data.get('common_use_cases', [])) if isinstance(data.get('common_use_cases'), list) else data.get('common_use_cases', '[]'),
+            'is_custom': True,
+            'updated_by': str(user.id),
+            'updated_at': datetime.utcnow().isoformat()
+        }
+        
+        # Check if mapping already exists
+        existing = supabase.table('industry_persona_mappings').select('id').eq('industry_name', industry_decoded).limit(1).execute()
+        
+        if existing.data:
+            # Update existing mapping
+            mapping_id = existing.data[0]['id']
+            result = supabase.table('industry_persona_mappings').update(update_data).eq('id', mapping_id).execute()
+            
+            if result.data:
+                logger.info(f"Updated persona mapping for {industry_decoded}")
+                return jsonify({
+                    'success': True,
+                    'message': 'Persona mapping updated successfully',
+                    'industry': industry_decoded
+                })
+            else:
+                return jsonify({'error': 'Failed to update persona mapping'}), 500
+        else:
+            # Create new mapping
+            update_data['created_by'] = str(user.id)
+            update_data['created_at'] = datetime.utcnow().isoformat()
+            result = supabase.table('industry_persona_mappings').insert(update_data).execute()
+            
+            if result.data:
+                logger.info(f"Created new persona mapping for {industry_decoded}")
+                return jsonify({
+                    'success': True,
+                    'message': 'Persona mapping created successfully',
+                    'industry': industry_decoded
+                }), 201
+            else:
+                return jsonify({'error': 'Failed to create persona mapping'}), 500
+                
+    except Exception as e:
+        logger.error(f"Error updating persona mapping for {industry}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'industry': industry
+        }), 500

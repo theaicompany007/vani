@@ -65,3 +65,12 @@ markdown>=3.5.0
 tqdm>=4.66.0
 pdfplumber>=0.10.0
 
+# Pitch deck export
+weasyprint>=60.0  # Note: Requires GTK3 on Windows (complex setup)
+reportlab>=4.0.0  # Fallback for Windows (easier setup)
+python-pptx>=0.6.21
+pillow>=10.0.0
+
+# Redis caching
+redis>=5.0.0
+

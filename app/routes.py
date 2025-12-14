@@ -10,6 +10,7 @@ def init_routes(app):
     
     # Register API blueprints
     from app.api import targets, outreach, dashboard, message_generator, auth
+    from app.api import targets_guided
     from app.api import permissions, industries, pitch, companies, contacts, jobs, admin, signatures
     from app.api import user_industries, knowledge_base, meetings, health
     from app.webhooks import resend_handler, twilio_handler, cal_com_handler
@@ -28,6 +29,8 @@ def init_routes(app):
     app.register_blueprint(knowledge_base.knowledge_base_bp)
     app.register_blueprint(meetings.meetings_bp)
     app.register_blueprint(targets.targets_bp)
+    from app.api import targets_guided
+    app.register_blueprint(targets_guided.guided_bp)
     app.register_blueprint(outreach.outreach_bp)
     app.register_blueprint(dashboard.dashboard_bp)
     app.register_blueprint(message_generator.message_gen_bp)
