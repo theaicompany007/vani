@@ -401,3 +401,4 @@ function getIndustryBadge(industry) {
 
 
 
+

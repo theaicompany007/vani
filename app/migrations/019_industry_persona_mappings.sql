@@ -37,3 +37,4 @@ COMMENT ON COLUMN industry_persona_mappings.is_custom IS 'True if this mapping w
 
 
 
+

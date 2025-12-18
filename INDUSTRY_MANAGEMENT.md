@@ -228,3 +228,4 @@ python scripts/assign_industry_to_user.py admin@example.com "FMCG" --default
 
 
 
+

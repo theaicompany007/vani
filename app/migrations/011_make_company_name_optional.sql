@@ -25,3 +25,4 @@ COMMENT ON COLUMN companies.domain IS 'Company domain (primary identifier for en
 
 
 
+
