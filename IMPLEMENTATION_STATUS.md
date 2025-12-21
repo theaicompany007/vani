@@ -85,7 +85,7 @@
 
 **Optional (for AI features):**
 - `RAG_API_KEY` - RAG service API key
-- `RAG_SERVICE_URL` - Default: `https://rag.kcube-consulting.com`
+- `RAG_SERVICE_URL` - Default: `https://rag.theaicompany.co`
 - `GEMINI_API_KEY` - Google Gemini API key
 
 ## ✨ Key Features Implemented

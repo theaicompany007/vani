@@ -9,14 +9,55 @@ The Admin Tools system provides super administrators with powerful batch process
 Admin Tools are only accessible to **super users**. To access:
 
 1. Log in as a super user
-2. Click the **"Admin Tools"** tab in the navigation bar
-3. You'll see:
-   - System Information
-   - Batch Contact Import interface
+2. Click the **"Admin"** tab in the navigation bar
+3. You'll see multiple admin sub-tabs:
+   - **User Management**: Manage users and permissions
+   - **Signatures**: Manage email signatures
+   - **Knowledge Base**: Query and upload documents to RAG
+   - **Industry Persona Mapping**: Map industries to VANI personas
+   - **Tools**: Batch Contact Import interface
+   - **Google Drive**: Sync files from Google Drive to RAG knowledge base
 
 ## Features
 
-### 1. System Information
+### 1. Google Drive Sync
+
+Sync files from Google Drive directly to the RAG knowledge base:
+
+#### Features:
+- **Browse Google Drive**: Navigate through folders and view files
+- **Select Multiple Files**: Use checkboxes to select files for synchronization
+- **Automatic Collection Organization**: Files are organized into collections based on folder structure
+- **Supported Formats**: PDF, DOCX, TXT, MD, and Google Docs
+- **On-Demand Sync**: Manual synchronization when needed
+
+#### Usage:
+
+1. **Setup** (One-time):
+   - Configure Google Service Account (see [GOOGLE_DRIVE_SETUP.md](GOOGLE_DRIVE_SETUP.md))
+   - Share Google Drive folders with the service account
+   - Add environment variables to `.env.local`
+
+2. **Browse and Select**:
+   - Navigate to Admin → Google Drive tab
+   - Click on folders to navigate
+   - Use checkboxes to select files (folders cannot be selected)
+   - View file details (size, modified date)
+
+3. **Sync**:
+   - Click "Sync Selected" button
+   - Wait for processing to complete
+   - Review sync results showing success/failure for each file
+
+#### Collection Naming:
+Files are organized into RAG collections based on their folder path:
+- Root files: `google_drive_research_company_profiles`
+- Folder files: `{folder_name}_company_profiles`
+- Nested folders: `{parent}_{child}_company_profiles`
+
+📖 **See [GOOGLE_DRIVE_SETUP.md](GOOGLE_DRIVE_SETUP.md) for detailed setup instructions.**
+
+### 2. System Information
 
 View real-time system metrics:
 - Platform and Python version
@@ -24,7 +65,7 @@ View real-time system metrics:
 - Memory usage (total, available, used percentage)
 - Disk usage (total, used, free, percentage)
 
-### 2. Batch Contact Import
+### 3. Batch Contact Import
 
 Import contacts from Excel files with advanced batch processing:
 

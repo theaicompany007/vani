@@ -3,20 +3,20 @@
 ## Overview
 This document lists all required API keys, tokens, and URLs for integrating with external services.
 
-## 1. RAG Service (rag.kcube-consulting.com)
+## 1. RAG Service (rag.theaicompany.co)
 
 ### Required Environment Variables
 
 ```bash
 # RAG Service Configuration
-RAG_SERVICE_URL=https://rag.kcube-consulting.com
+RAG_SERVICE_URL=https://rag.theaicompany.co
 RAG_API_KEY=27e887d021a49654a0a703688cb139cdf652dfec795009a5afb8e9556c49b181
 RAG_ONLY=true  # Optional: Set to true to use only RAG service (no direct ChromaDB)
 RAG_TRUSTED_ORIGIN=http://localhost:5000,https://yourdomain.com  # Optional: Allowed origins for browser requests
 ```
 
 ### How to Get
-- **RAG_SERVICE_URL**: Already configured at `rag.kcube-consulting.com`
+- **RAG_SERVICE_URL**: Already configured at `rag.theaicompany.co`
 - **RAG_API_KEY**: Get from RAG service administrator or check existing `.env.local` file
 - **RAG_ONLY**: Set to `true` to use RAG service exclusively
 - **RAG_TRUSTED_ORIGIN**: Comma-separated list of allowed origins (for CORS)
@@ -122,7 +122,7 @@ SUPABASE_SERVICE_KEY=your_service_role_key
 # ============================================
 # RAG Service Configuration
 # ============================================
-RAG_SERVICE_URL=https://rag.kcube-consulting.com
+RAG_SERVICE_URL=https://rag.theaicompany.co
 RAG_API_KEY=27e887d021a49654a0a703688cb139cdf652dfec795009a5afb8e9556c49b181
 RAG_ONLY=true
 RAG_TRUSTED_ORIGIN=http://localhost:5000

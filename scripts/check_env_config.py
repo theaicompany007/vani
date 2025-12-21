@@ -67,6 +67,17 @@ REQUIRED_VARS = {
     'OPENAI_API_KEY': None,
     'OPENAI_MODEL': 'gpt-4o-mini',  # Optional, has default
     
+    # RAG / Knowledge Base
+    'RAG_API_KEY': None,
+    'RAG_SERVICE_URL': 'https://rag.theaicompany.co',
+    
+    # Google Drive (Optional - for Admin → Google Drive sync)
+    'GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON': None,
+    'GOOGLE_DRIVE_SERVICE_ACCOUNT_PATH': None,
+    
+    # Gemini (Optional - for AI Target Finder)
+    'GEMINI_API_KEY': None,
+    
     # App
     'APP_NAME': 'Project VANI Outreach Command Center',
     'APP_URL': 'http://localhost:5000',
@@ -112,7 +123,8 @@ def check_configuration():
         value = os.getenv(var)
         if var in ['SECRET_KEY', 'SUPABASE_KEY', 'SUPABASE_SERVICE_KEY', 'TWILIO_AUTH_TOKEN', 
                    'RESEND_API_KEY', 'CAL_COM_API_KEY', 'WEBHOOK_SECRET', 'OPENAI_API_KEY',
-                   'SUPABASE_DB_PASSWORD', 'LINKEDIN_CLIENT_SECRET']:
+                   'SUPABASE_DB_PASSWORD', 'LINKEDIN_CLIENT_SECRET', 'RAG_API_KEY', 
+                   'GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON', 'GEMINI_API_KEY']:
             # Mask sensitive values
             if value:
                 masked = value[:8] + '...' + value[-4:] if len(value) > 12 else '***'
@@ -166,6 +178,36 @@ def check_configuration():
             print("   - WEBHOOK_BASE_URL is missing")
         if not webhook_secret:
             print("   - WEBHOOK_SECRET is missing")
+    
+    # Google Drive configuration check
+    print("\n" + "="*70)
+    print("  GOOGLE DRIVE CONFIGURATION CHECK")
+    print("="*70 + "\n")
+    
+    google_drive_json = os.getenv('GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON')
+    google_drive_path = os.getenv('GOOGLE_DRIVE_SERVICE_ACCOUNT_PATH')
+    
+    if google_drive_json or google_drive_path:
+        print("✅ Google Drive integration configured:")
+        if google_drive_json:
+            print("   - Using GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON (embedded JSON)")
+        if google_drive_path:
+            path = Path(google_drive_path)
+            if path.exists():
+                print(f"   - Using GOOGLE_DRIVE_SERVICE_ACCOUNT_PATH: {google_drive_path}")
+                print("     ✅ Service account file exists")
+            else:
+                print(f"   - Using GOOGLE_DRIVE_SERVICE_ACCOUNT_PATH: {google_drive_path}")
+                print("     ❌ Service account file NOT FOUND")
+        print("\n💡 Google Drive features:")
+        print("   - Admin → Google Drive tab available (Super Users only)")
+        print("   - Browse and sync files from Google Drive to RAG knowledge base")
+        print("   - See GOOGLE_DRIVE_SETUP.md for setup instructions")
+    else:
+        print("⚠️  Google Drive integration not configured (optional):")
+        print("   - GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON or GOOGLE_DRIVE_SERVICE_ACCOUNT_PATH missing")
+        print("   - Google Drive sync feature will not be available")
+        print("   - See GOOGLE_DRIVE_SETUP.md for setup instructions")
     
     # Summary
     print("\n" + "="*70)

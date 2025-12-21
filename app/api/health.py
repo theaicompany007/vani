@@ -121,7 +121,7 @@ def health_check():
             }
         
         # Check RAG Service (non-blocking, shorter timeout)
-        rag_service_url = os.getenv('RAG_SERVICE_URL', 'https://rag.kcube-consulting.com')
+        rag_service_url = os.getenv('RAG_SERVICE_URL', 'https://rag.theaicompany.co')
         rag_api_key = os.getenv('RAG_API_KEY')
         
         if rag_api_key:

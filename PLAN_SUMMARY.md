@@ -2,9 +2,9 @@
 
 ## Required Credentials
 
-### 1. RAG Service (rag.kcube-consulting.com)
+### 1. RAG Service (rag.theaicompany.co)
 ```bash
-RAG_SERVICE_URL=https://rag.kcube-consulting.com
+RAG_SERVICE_URL=https://rag.theaicompany.co
 RAG_API_KEY=27e887d021a49654a0a703688cb139cdf652dfec795009a5afb8e9556c49b181
 RAG_ONLY=true
 RAG_TRUSTED_ORIGIN=http://localhost:5000

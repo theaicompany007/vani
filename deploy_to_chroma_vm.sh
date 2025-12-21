@@ -61,7 +61,7 @@ GOOGLE_SHEETS_CREDENTIALS={"type":"service_account"}
 DOCKER_CONTAINER=true
 
 # RAG Service
-RAG_SERVICE_URL=https://rag.kcube-consulting.com
+RAG_SERVICE_URL=https://rag.theaicompany.co
 CHROMA_HOST=chroma
 CHROMA_PORT=8000
 

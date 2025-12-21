@@ -99,7 +99,7 @@ docker logs vani --tail 100 -f
   # AI Services
   OPENAI_API_KEY=[openai-key]
   RAG_API_KEY=[rag-service-key]
-  RAG_SERVICE_URL=https://rag.kcube-consulting.com
+  RAG_SERVICE_URL=https://rag.theaicompany.co
   GEMINI_API_KEY=[gemini-key]  # Optional
   
   # Webhooks

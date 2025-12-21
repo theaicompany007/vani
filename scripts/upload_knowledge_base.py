@@ -407,7 +407,7 @@ def main():
     args = parser.parse_args()
     
     # Get RAG configuration
-    rag_service_url = os.getenv('RAG_SERVICE_URL', 'https://rag.kcube-consulting.com')
+    rag_service_url = os.getenv('RAG_SERVICE_URL', 'https://rag.theaicompany.co')
     rag_api_key = os.getenv('RAG_API_KEY')
     
     if not rag_api_key and not args.dry_run:

@@ -80,7 +80,7 @@ theaicompany-web/
 - `app/api/rag/query/route.ts` (optional):
   - POST: Proxy to RAG service for Knowledge Base chat
   - Use `RAG_SERVICE_URL` and `RAG_API_KEY` from env
-  - Forward queries to `https://rag.kcube-consulting.com/rag/query`
+  - Forward queries to `https://rag.theaicompany.co/rag/query`
 
 ### 5. Create Main Page Component
 
@@ -238,7 +238,7 @@ theaicompany-web/
 
 ### Optional
 
-- `RAG_SERVICE_URL`: RAG service endpoint (default: `https://rag.kcube-consulting.com`)
+- `RAG_SERVICE_URL`: RAG service endpoint (default: `https://rag.theaicompany.co`)
 - `RAG_API_KEY`: RAG service API key
 - `NEXT_PUBLIC_APP_URL`: Public URL of the website
 - `NGROK_AUTH_TOKEN`: ngrok authentication token

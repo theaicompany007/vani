@@ -1005,6 +1005,9 @@
                     <button onclick="switchAdminTab('tools')" id="admin-tab-tools" class="admin-tab-btn pb-3 px-1 border-b-2 border-transparent text-slate-500 hover:text-slate-700 font-medium">
                         <i class="fa-solid fa-tools mr-2"></i>Tools
                     </button>
+                    <button onclick="switchAdminTab('google-drive')" id="admin-tab-google-drive" class="admin-tab-btn pb-3 px-1 border-b-2 border-transparent text-slate-500 hover:text-slate-700 font-medium">
+                        <i class="fa-brands fa-google-drive mr-2"></i>Google Drive
+                    </button>
                 </div>
             </div>
 
@@ -1472,6 +1475,56 @@
                         
                         <div id="admin-import-status"></div>
                     </div>
+                </div>
+            </div>
+
+            <!-- Google Drive Tab -->
+            <div id="admin-content-google-drive" class="admin-tab-content hidden">
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <h3 class="text-lg font-bold text-slate-900 mb-2">
+                                <i class="fa-brands fa-google-drive text-indigo-600 mr-2"></i>Google Drive Sync
+                            </h3>
+                            <p class="text-sm text-slate-600">Browse and sync files from Google Drive to RAG knowledge base</p>
+                        </div>
+                        <button onclick="loadDriveFiles()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-bold">
+                            <i class="fa-solid fa-sync-alt mr-2"></i>Refresh
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Breadcrumb Navigation -->
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
+                    <div class="flex items-center gap-2">
+                        <button onclick="navigateDriveFolder('root')" class="text-slate-600 hover:text-slate-900 text-sm font-medium">
+                            <i class="fa-solid fa-home mr-1"></i>Root
+                        </button>
+                        <span id="drive-breadcrumb" class="text-slate-500 text-sm"></span>
+                    </div>
+                </div>
+
+                <!-- File List -->
+                <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                    <div class="mb-4 flex justify-between items-center">
+                        <input type="text" id="drive-search" placeholder="Search files (not yet implemented)" class="max-w-sm px-3 py-2 border border-slate-300 rounded-lg text-sm" disabled>
+                        <button onclick="syncSelectedDriveFiles()" id="drive-sync-btn" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                            <i class="fa-solid fa-cloud-arrow-up mr-2"></i>Sync Selected (<span id="drive-selected-count">0</span>)
+                        </button>
+                    </div>
+
+                    <div id="drive-files-container" class="space-y-2">
+                        <div class="text-center text-slate-500 py-8">
+                            <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
+                            <p>Loading files...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sync Results -->
+                <div id="drive-sync-results" class="hidden mt-6 bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                    <h3 class="text-lg font-bold text-slate-900 mb-4">Sync Results</h3>
+                    <div id="drive-sync-results-content"></div>
                 </div>
             </div>
         </section>
@@ -10286,6 +10339,248 @@ Project VANI Team`;
                 }
                 // Update allIndustries for KB search (KB should use user's assigned industries)
                 allIndustries = userAssignedIndustries;
+            } else if (tabId === 'google-drive') {
+                loadDriveFiles('root');
+            }
+        }
+
+        // --- GOOGLE DRIVE FUNCTIONS ---
+        let driveCurrentFolderId = 'root';
+        let driveSelectedFiles = new Set();
+        let driveFolderPath = [];
+
+        async function loadDriveFiles(folderId = null) {
+            folderId = folderId || driveCurrentFolderId || 'root';
+            driveCurrentFolderId = folderId;
+            
+            const container = document.getElementById('drive-files-container');
+            if (container) {
+                container.innerHTML = '<div class="text-center text-slate-500 py-8"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>Loading files...</p></div>';
+            }
+            
+            try {
+                const url = folderId === 'root' ? '/api/drive/list' : `/api/drive/list?folderId=${folderId}`;
+                const response = await fetch(url, { credentials: 'include' });
+                const data = await response.json();
+                
+                if (data.success && data.files) {
+                    renderDriveFiles(data.files);
+                    updateDriveBreadcrumb(folderId);
+                } else {
+                    showToast('error', 'Error', data.error || 'Failed to load files', 3000);
+                    if (container) {
+                        container.innerHTML = '<div class="text-center text-red-500 py-8">Failed to load files</div>';
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading Drive files:', error);
+                showToast('error', 'Error', 'Failed to load files: ' + error.message, 5000);
+                if (container) {
+                    container.innerHTML = '<div class="text-center text-red-500 py-8">Error loading files</div>';
+                }
+            }
+        }
+
+        function renderDriveFiles(files) {
+            const container = document.getElementById('drive-files-container');
+            if (!container) return;
+            
+            if (files.length === 0) {
+                container.innerHTML = '<div class="text-center text-slate-500 py-8">No files or folders found</div>';
+                return;
+            }
+            
+            let html = '<div class="space-y-2">';
+            files.forEach(file => {
+                const isSelected = driveSelectedFiles.has(file.id);
+                const icon = file.isFolder ? 'fa-folder' : 'fa-file';
+                const iconColor = file.isFolder ? 'text-blue-500' : 'text-slate-500';
+                const size = file.size ? formatFileSize(file.size) : '-';
+                const modified = file.modifiedTime ? new Date(file.modifiedTime).toLocaleDateString() : '-';
+                
+                html += `
+                    <div class="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-200 hover:bg-slate-100 transition-colors">
+                        <div class="flex items-center gap-3 flex-1">
+                            <input type="checkbox" ${file.isFolder ? 'disabled' : ''} 
+                                   ${isSelected ? 'checked' : ''} 
+                                   onchange="toggleDriveFileSelection('${file.id}', this.checked)"
+                                   class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
+                            <i class="fa-solid ${icon} ${iconColor} text-xl"></i>
+                            <div class="flex-1">
+                                ${file.isFolder ? 
+                                    `<button onclick="navigateDriveFolder('${file.id}')" class="text-left font-medium text-slate-900 hover:text-indigo-600">${escapeHtml(file.name)}</button>` :
+                                    `<a href="${file.webViewLink || '#'}" target="_blank" rel="noopener noreferrer" class="font-medium text-slate-900 hover:text-indigo-600">${escapeHtml(file.name)}</a>`
+                                }
+                                <div class="text-xs text-slate-500 mt-1">
+                                    ${file.isFolder ? 'Folder' : `${size} • Modified: ${modified}`}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            container.innerHTML = html;
+            updateDriveSyncButton();
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        function toggleDriveFileSelection(fileId, isChecked) {
+            if (isChecked) {
+                driveSelectedFiles.add(fileId);
+            } else {
+                driveSelectedFiles.delete(fileId);
+            }
+            updateDriveSyncButton();
+        }
+
+        function updateDriveSyncButton() {
+            const btn = document.getElementById('drive-sync-btn');
+            const count = document.getElementById('drive-selected-count');
+            if (btn) {
+                btn.disabled = driveSelectedFiles.size === 0;
+            }
+            if (count) {
+                count.textContent = driveSelectedFiles.size;
+            }
+        }
+
+        function navigateDriveFolder(folderId) {
+            driveSelectedFiles.clear();
+            updateDriveSyncButton();
+            loadDriveFiles(folderId);
+        }
+
+        async function updateDriveBreadcrumb(folderId) {
+            const breadcrumb = document.getElementById('drive-breadcrumb');
+            if (!breadcrumb) return;
+            
+            if (folderId === 'root') {
+                breadcrumb.textContent = '';
+                driveFolderPath = [];
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/drive/file/${folderId}`, { credentials: 'include' });
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Build path by traversing parents
+                    const path = [];
+                    let currentId = folderId;
+                    
+                    while (currentId && currentId !== 'root') {
+                        try {
+                            const fileResponse = await fetch(`/api/drive/file/${currentId}`, { credentials: 'include' });
+                            const fileData = await fileResponse.json();
+                            if (fileData.success && fileData.name) {
+                                path.unshift(fileData.name);
+                                currentId = fileData.parents && fileData.parents.length > 0 ? fileData.parents[0] : null;
+                            } else {
+                                break;
+                            }
+                        } catch {
+                            break;
+                        }
+                    }
+                    
+                    driveFolderPath = path;
+                    if (path.length > 0) {
+                        breadcrumb.textContent = ' / ' + path.join(' / ');
+                    } else {
+                        breadcrumb.textContent = '';
+                    }
+                }
+            } catch (error) {
+                console.error('Error updating breadcrumb:', error);
+            }
+        }
+
+        async function syncSelectedDriveFiles() {
+            if (driveSelectedFiles.size === 0) {
+                showToast('warning', 'No Files', 'Please select at least one file to sync', 3000);
+                return;
+            }
+            
+            const btn = document.getElementById('drive-sync-btn');
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Syncing...';
+            
+            const resultsDiv = document.getElementById('drive-sync-results');
+            const resultsContent = document.getElementById('drive-sync-results-content');
+            
+            try {
+                const response = await fetch('/api/drive/sync', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ fileIds: Array.from(driveSelectedFiles) })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    let html = `<div class="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+                        <div class="font-bold text-emerald-900">Sync Complete</div>
+                        <div class="text-sm text-emerald-700 mt-1">
+                            ${data.synced} file(s) synced, ${data.failed} failed
+                            ${data.collections && data.collections.length > 0 ? `<br>Collections: ${data.collections.join(', ')}` : ''}
+                        </div>
+                    </div>`;
+                    
+                    if (data.results && data.results.length > 0) {
+                        html += '<div class="space-y-2">';
+                        data.results.forEach(result => {
+                            if (result.success) {
+                                html += `<div class="p-3 bg-emerald-50 border border-emerald-200 rounded text-sm">
+                                    <i class="fa-solid fa-check-circle text-emerald-600 mr-2"></i>
+                                    <strong>${escapeHtml(result.name)}</strong>: ${result.chunks} chunks synced to collection "${result.collection}"
+                                </div>`;
+                            } else {
+                                html += `<div class="p-3 bg-rose-50 border border-rose-200 rounded text-sm">
+                                    <i class="fa-solid fa-times-circle text-rose-600 mr-2"></i>
+                                    <strong>${escapeHtml(result.name)}</strong>: ${escapeHtml(result.error || 'Failed to sync')}
+                                </div>`;
+                            }
+                        });
+                        html += '</div>';
+                    }
+                    
+                    resultsContent.innerHTML = html;
+                    resultsDiv.classList.remove('hidden');
+                    
+                    // Clear selection
+                    driveSelectedFiles.clear();
+                    updateDriveSyncButton();
+                    loadDriveFiles(driveCurrentFolderId); // Refresh file list
+                    
+                    showToast('success', 'Sync Complete', `${data.synced} file(s) synced successfully`, 5000);
+                } else {
+                    resultsContent.innerHTML = `<div class="p-3 bg-rose-50 border border-rose-200 rounded text-sm text-rose-800">
+                        Error: ${escapeHtml(data.error || 'Failed to sync files')}
+                    </div>`;
+                    resultsDiv.classList.remove('hidden');
+                    showToast('error', 'Sync Failed', data.error || 'Failed to sync files', 5000);
+                }
+            } catch (error) {
+                console.error('Error syncing files:', error);
+                resultsContent.innerHTML = `<div class="p-3 bg-rose-50 border border-rose-200 rounded text-sm text-rose-800">
+                    Error: ${escapeHtml(error.message)}
+                </div>`;
+                resultsDiv.classList.remove('hidden');
+                showToast('error', 'Sync Failed', error.message, 5000);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
             }
         }
 

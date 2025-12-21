@@ -37,6 +37,7 @@ Copy-Item .env.example .env.local
 - RAG_API_KEY (for Knowledge Base and enhanced AI Target Finder)
 - GEMINI_API_KEY (for Notebook LM integration in AI Target Finder)
 - AI_PROVIDER_PRIORITY (default: "gemini,openai" - controls which AI provider to use first for target analysis)
+- GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON or GOOGLE_DRIVE_SERVICE_ACCOUNT_PATH (for Google Drive to RAG sync - see [GOOGLE_DRIVE_SETUP.md](GOOGLE_DRIVE_SETUP.md))
 
 ### 3. Setup Database
 
@@ -207,7 +208,7 @@ See `.env.example` for all required variables. Key ones:
 - `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` - Twilio credentials
 - `OPENAI_API_KEY` - OpenAI API key for message generation and AI Target Finder
 - `RAG_API_KEY` - RAG service API key (for Knowledge Base and enhanced AI Target Finder)
-- `RAG_SERVICE_URL` - RAG service URL (default: https://rag.kcube-consulting.com)
+- `RAG_SERVICE_URL` - RAG service URL (default: https://rag.theaicompany.co)
 - `GEMINI_API_KEY` - Google Gemini API key (for Notebook LM integration)
 - `AI_PROVIDER_PRIORITY` - AI provider priority order (default: "gemini,openai"). Options: "gemini,openai" or "openai,gemini"
 - `NOTIFICATION_EMAIL` - Your email for HIT alerts
@@ -278,6 +279,16 @@ See `app/migrations/` for full schema.
 2. **Query/View**: Search knowledge base with collection filter
 3. **Upload Documents**: Drag-and-drop PDF/TXT files with metadata
 4. **Scrape URLs**: Enter URL to scrape and ingest content
+
+### Google Drive Sync (Super Users)
+
+1. Navigate to "Admin" > "Google Drive" tab
+2. **Browse**: Navigate through Google Drive folders
+3. **Select Files**: Use checkboxes to select files for synchronization
+4. **Sync**: Click "Sync Selected" to upload files to RAG knowledge base
+5. Files are automatically organized into collections based on folder structure
+
+📖 **See [GOOGLE_DRIVE_SETUP.md](GOOGLE_DRIVE_SETUP.md) for setup instructions.**
 
 ### Import/Export Contacts
 
@@ -441,7 +452,7 @@ If you see errors like "404 models/gemini-1.5-pro is not found":
 
 ### Knowledge Base Not Working
 - Verify RAG_API_KEY is set
-- Check RAG_SERVICE_URL is correct (default: https://rag.kcube-consulting.com)
+- Check RAG_SERVICE_URL is correct (default: https://rag.theaicompany.co)
 - Review API logs for errors
 
 ### Large Contact Import Issues
@@ -458,6 +469,7 @@ Private project - All rights reserved
 
 - [VANI_FEATURES_OVERVIEW.md](VANI_FEATURES_OVERVIEW.md) - Complete features list
 - [ADMIN_TOOLS_GUIDE.md](ADMIN_TOOLS_GUIDE.md) - Admin tools documentation
+- [GOOGLE_DRIVE_SETUP.md](GOOGLE_DRIVE_SETUP.md) - Google Drive to RAG sync setup
 - [SIGNATURE_SYSTEM_GUIDE.md](SIGNATURE_SYSTEM_GUIDE.md) - Signature management guide
 - [SUPER_USER_INDUSTRY_SETUP.md](SUPER_USER_INDUSTRY_SETUP.md) - Super user setup
 

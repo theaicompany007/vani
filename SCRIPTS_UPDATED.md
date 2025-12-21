@@ -196,7 +196,7 @@ All scripts now support these environment variables:
 **Optional (for AI features):**
 - `OPENAI_API_KEY` - For AI message generation and industry assignment
 - `RAG_API_KEY` - For RAG service integration
-- `RAG_SERVICE_URL` - RAG service URL (default: https://rag.kcube-consulting.com)
+- `RAG_SERVICE_URL` - RAG service URL (default: https://rag.theaicompany.co)
 - `GEMINI_API_KEY` - For Google Gemini/Notebook LM integration
 
 ## Migration Order

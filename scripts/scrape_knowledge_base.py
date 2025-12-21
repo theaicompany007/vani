@@ -366,7 +366,7 @@ def main():
         sys.exit(1)
     
     # Get RAG configuration
-    rag_service_url = os.getenv('RAG_SERVICE_URL', 'https://rag.kcube-consulting.com')
+    rag_service_url = os.getenv('RAG_SERVICE_URL', 'https://rag.theaicompany.co')
     rag_api_key = os.getenv('RAG_API_KEY')
     
     if args.upload_to_rag and not rag_api_key:

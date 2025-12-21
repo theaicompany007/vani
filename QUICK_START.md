@@ -116,6 +116,14 @@ See `PROJECT_VANI_EXECUTION_GUIDE.md` for:
 - [ ] Database tables created
 - [ ] Run: `python run.py`
 - [ ] Open command center URL
+- [ ] (Optional) Configure Google Drive sync - see `GOOGLE_DRIVE_SETUP.md`
 
 **You're ready to go!** 🎉
+
+## 🔧 Optional Features
+
+### Google Drive Sync (Super Users)
+- Configure Google Service Account (see `GOOGLE_DRIVE_SETUP.md`)
+- Add `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON` or `GOOGLE_DRIVE_SERVICE_ACCOUNT_PATH` to `.env.local`
+- Access via: Admin → Google Drive tab
 

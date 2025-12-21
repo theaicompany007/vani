@@ -8,10 +8,11 @@ Features:
 - Database connection check
 - Ngrok tunnel management
 - Webhook auto-configuration
-- Admin tools (User Management, Signatures, Knowledge Base, Tools)
+- Admin tools (User Management, Signatures, Knowledge Base, Google Drive, Tools)
 - AI Target Finder with Knowledge Base integration
 - Contact & Company management
 - Multi-channel outreach (Email, WhatsApp, LinkedIn)
+- Google Drive to RAG sync (Super Users)
 """
 import os
 import sys
@@ -139,9 +140,11 @@ def check_environment():
     # Optional but recommended for AI features
     optional_vars = {
         'RAG_API_KEY': 'RAG service API key (for AI Target Finder & Knowledge Base)',
-        'RAG_SERVICE_URL': 'RAG service URL (default: https://rag.kcube-consulting.com)',
+        'RAG_SERVICE_URL': 'RAG service URL (default: https://rag.theaicompany.co)',
         'GEMINI_API_KEY': 'Google Gemini API key (for AI Target Finder - Notebook LM)',
         'SUPABASE_ACCESS_TOKEN': 'Supabase Personal Access Token (for OAuth URL auto-config)',
+        'GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON': 'Google Drive service account JSON (for Google Drive to RAG sync)',
+        'GOOGLE_DRIVE_SERVICE_ACCOUNT_PATH': 'Path to Google Drive service account JSON file (alternative to JSON env var)',
     }
     
     # Optional Twilio WhatsApp (sandbox or paid)
@@ -245,6 +248,16 @@ def check_ai_finder_access():
         print("      AI Target Finder will work with reduced functionality")
         print("      Knowledge Base queries will be limited without RAG_API_KEY")
     
+    # Check Google Drive integration
+    google_drive_json = os.getenv('GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON')
+    google_drive_path = os.getenv('GOOGLE_DRIVE_SERVICE_ACCOUNT_PATH')
+    google_drive_configured = bool(google_drive_json or google_drive_path)
+    
+    if google_drive_configured:
+        features_available.append("Google Drive sync (Admin → Google Drive)")
+    else:
+        features_missing.append("Google Drive sync (optional - see GOOGLE_DRIVE_SETUP.md)")
+    
     if openai_key and rag_key and gemini_key:
         print("  [✓] Full AI capabilities available (Target Finder + Knowledge Base)!")
     elif openai_key and rag_key:
@@ -252,6 +265,13 @@ def check_ai_finder_access():
     elif openai_key:
         print("  [~] AI Target Finder available with basic functionality")
         print("  [~] Knowledge Base requires RAG_API_KEY for full functionality")
+    
+    # Google Drive status
+    if google_drive_configured:
+        print("  [✓] Google Drive integration configured (Admin → Google Drive tab available)")
+    else:
+        print("  [~] Google Drive integration not configured (optional)")
+        print("      See GOOGLE_DRIVE_SETUP.md for setup instructions")
 
 
 def check_database():

@@ -161,7 +161,19 @@
   - Auto-tagging with "the-ai-company" and platform tags
   - Metadata management (industry, source, company)
 
-### 17. **Signature Management**
+### 17. **Google Drive Integration** (Super Users Only)
+- **Location**: `app/api/google_drive.py`
+- **Features**:
+  - Browse Google Drive folders and files
+  - Select multiple files for synchronization
+  - Sync files to RAG knowledge base
+  - Automatic collection organization based on folder structure
+  - Support for PDF, DOCX, TXT, MD, and Google Docs
+  - On-demand manual synchronization
+  - Service account authentication
+  - See [GOOGLE_DRIVE_SETUP.md](GOOGLE_DRIVE_SETUP.md) for setup
+
+### 18. **Signature Management**
 - **Location**: `app/api/signatures.py`, `app/utils/signature_formatter.py`
 - **Features**:
   - Channel-specific signatures (Email, WhatsApp, LinkedIn)
@@ -240,6 +252,11 @@
 - `POST /api/knowledge-base/upload` - Upload documents (PDF/TXT)
 - `POST /api/knowledge-base/ingest-url` - Scrape and ingest URL
 
+### Google Drive (`app/api/google_drive.py`) - Super Users Only
+- `GET /api/drive/list` - List files and folders from Google Drive
+- `GET /api/drive/file/<file_id>` - Get file metadata
+- `POST /api/drive/sync` - Sync selected files to RAG knowledge base
+
 ### Signatures (`app/api/signatures.py`)
 - `GET /api/signatures` - List signature profiles
 - `GET /api/signatures/default` - Get default signature
@@ -293,6 +310,10 @@
 ### Google Sheets
 - **Location**: `app/integrations/google_sheets_client.py`
 - **Features**: Import/export, data synchronization
+
+### Google Drive
+- **Location**: `app/api/google_drive.py`
+- **Features**: Browse Drive, sync files to RAG, service account authentication
 
 ---
 

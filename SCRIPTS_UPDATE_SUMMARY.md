@@ -51,7 +51,7 @@ python scripts/grant_default_permissions.py user@example.com --grant --use-cases
 **Changes:**
 - ✅ Added checks for optional AI integration environment variables:
   - `RAG_API_KEY` - RAG service API key
-  - `RAG_SERVICE_URL` - RAG service URL (default: https://rag.kcube-consulting.com)
+  - `RAG_SERVICE_URL` - RAG service URL (default: https://rag.theaicompany.co)
   - `GEMINI_API_KEY` - Google Gemini API key
 - ✅ Shows warnings if optional variables are missing (but doesn't block startup)
 - ✅ Clearly distinguishes between required and optional variables

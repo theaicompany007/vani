@@ -4,7 +4,7 @@
 
 ### Backend Services (100% Complete)
 - ✅ **RAG Client** (`app/integrations/rag_client.py`)
-  - Queries `rag.kcube-consulting.com` with industry filtering
+  - Queries `rag.theaicompany.co` with industry filtering
   - Supports metadata filtering and top_k results
   
 - ✅ **Gemini Client** (`app/integrations/gemini_client.py`)
@@ -118,7 +118,7 @@ OPENAI_API_KEY=...
 
 # Optional (for AI features)
 RAG_API_KEY=...
-RAG_SERVICE_URL=https://rag.kcube-consulting.com
+RAG_SERVICE_URL=https://rag.theaicompany.co
 GEMINI_API_KEY=...
 ```
 

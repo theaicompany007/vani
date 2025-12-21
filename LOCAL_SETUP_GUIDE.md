@@ -225,6 +225,18 @@ NGROK_AUTHTOKEN=...
 NGROK_DOMAIN=vani.ngrok.app
 WEBHOOK_BASE_URL=https://vani.ngrok.app
 
+# RAG / Knowledge Base (Optional)
+RAG_API_KEY=...
+RAG_SERVICE_URL=https://rag.theaicompany.co
+
+# Google Drive (Optional - for Admin → Google Drive sync)
+GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON='{"type":"service_account",...}'
+# OR
+GOOGLE_DRIVE_SERVICE_ACCOUNT_PATH=C:\path\to\service-account-key.json
+
+# Gemini (Optional - for AI Target Finder)
+GEMINI_API_KEY=...
+
 # App Settings
 SECRET_KEY=your-secret-key
 FLASK_PORT=5000
@@ -254,6 +266,22 @@ python scripts/test_api_keys.py
 curl http://localhost:5000/api/health
 ```
 
+## Optional: Google Drive Setup
+
+To enable Google Drive sync (Super Users only):
+
+1. **Create Google Service Account** (see `GOOGLE_DRIVE_SETUP.md`)
+2. **Add to `.env.local`**:
+   ```env
+   GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON='{"type":"service_account",...}'
+   # OR
+   GOOGLE_DRIVE_SERVICE_ACCOUNT_PATH=C:\path\to\service-account-key.json
+   ```
+3. **Share Google Drive folders** with service account email
+4. **Access**: Admin → Google Drive tab
+
+📖 **See [GOOGLE_DRIVE_SETUP.md](GOOGLE_DRIVE_SETUP.md) for detailed instructions.**
+
 ## Next Steps After Local Setup
 
 1. ✅ Test login/logout
@@ -262,7 +290,8 @@ curl http://localhost:5000/api/health
 4. ✅ Test outreach sending
 5. ✅ Grant permissions to test users
 6. ✅ Test industry switching (as super user)
-7. ✅ Integrate frontend code from `FRONTEND_INTEGRATION_GUIDE.md`
+7. ✅ (Optional) Configure Google Drive sync
+8. ✅ Integrate frontend code from `FRONTEND_INTEGRATION_GUIDE.md`
 
 ## Notes
 

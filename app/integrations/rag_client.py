@@ -1,4 +1,4 @@
-"""RAG service client for querying rag.kcube-consulting.com"""
+"""RAG service client for querying rag.theaicompany.co"""
 import os
 import logging
 import requests
@@ -8,10 +8,10 @@ logger = logging.getLogger(__name__)
 
 
 class RAGClient:
-    """Client for querying RAG service at rag.kcube-consulting.com"""
+    """Client for querying RAG service at rag.theaicompany.co"""
     
     def __init__(self):
-        self.service_url = os.getenv('RAG_SERVICE_URL', 'https://rag.kcube-consulting.com')
+        self.service_url = os.getenv('RAG_SERVICE_URL', 'https://rag.theaicompany.co')
         self.api_key = os.getenv('RAG_API_KEY')
         
         if not self.api_key:

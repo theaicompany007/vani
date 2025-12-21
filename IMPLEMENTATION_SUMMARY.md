@@ -4,7 +4,7 @@
 
 ### 1. Core Services & Integrations
 - ✅ **RAG Client** (`app/integrations/rag_client.py`)
-  - Queries `rag.kcube-consulting.com` with industry filtering
+  - Queries `rag.theaicompany.co` with industry filtering
   - Supports case studies, services, and industry insights collections
   - Handles API key authentication and error handling
 
@@ -78,7 +78,7 @@ pip install google-generativeai
 
 ### 2. Environment Variables
 Ensure these are set in `.env.local`:
-- `RAG_SERVICE_URL` - `https://rag.kcube-consulting.com`
+- `RAG_SERVICE_URL` - `https://rag.theaicompany.co`
 - `RAG_API_KEY` - Your RAG service API key
 - `GEMINI_API_KEY` - Your Google Gemini API key
 - `OPENAI_API_KEY` - Your OpenAI API key (already configured)

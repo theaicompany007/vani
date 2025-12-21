@@ -9,6 +9,7 @@ This document summarizes all updates made to scripts and documentation to reflec
 3. **Industry Display on Pages** - Target Hit List and Pitch Presentation show active industry
 4. **Enhanced Search & Pagination** - Targets now have search and pagination like contacts/companies
 5. **Contact & Company Management** - New use cases for contact and company management
+6. **Google Drive Integration** - Sync files from Google Drive to RAG knowledge base (Super Users only)
 
 ## Updated Scripts
 
@@ -152,8 +153,10 @@ All migrations should be run in this order:
 
 ### Optional (for AI features)
 - `RAG_API_KEY` - RAG service API key
-- `RAG_SERVICE_URL` - RAG service URL (default: https://rag.kcube-consulting.com)
+- `RAG_SERVICE_URL` - RAG service URL (default: https://rag.theaicompany.co)
 - `GEMINI_API_KEY` - Google Gemini API key
+- `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON` - Google Drive service account JSON (for Google Drive sync)
+- `GOOGLE_DRIVE_SERVICE_ACCOUNT_PATH` - Path to Google Drive service account JSON file (alternative)
 
 ## Quick Start
 
@@ -202,6 +205,31 @@ After updates, test:
 6. ✅ Search and pagination work for targets
 7. ✅ "All Industries" shows overall count
 
+## Updated Scripts (Google Drive)
+
+#### `run.py`
+- **Added:** Google Drive environment variable checks (`GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON`, `GOOGLE_DRIVE_SERVICE_ACCOUNT_PATH`)
+- **Added:** Google Drive feature status reporting in AI features check
+- **Updated:** Feature list to include Google Drive integration
+
+#### `scripts/check_env_config.py`
+- **Added:** Google Drive environment variables to configuration check
+- **Added:** Google Drive configuration status section with detailed feedback
+- **Updated:** Masking for Google Drive service account JSON in output
+
+## New Documentation (Google Drive)
+
+### `GOOGLE_DRIVE_SETUP.md` (NEW)
+Comprehensive setup guide covering:
+- Google Service Account creation and configuration
+- Environment variable setup
+- Folder sharing instructions
+- Collection naming conventions
+- UI usage instructions
+- API endpoint documentation
+- Troubleshooting guide
+- Security best practices
+
 ## Related Documentation
 
 - `INDUSTRY_MANAGEMENT.md` - Complete industry management guide
@@ -209,6 +237,8 @@ After updates, test:
 - `PERMISSIONS_MANAGEMENT.md` - Permission management guide
 - `MULTIPLE_INDUSTRY_ASSIGNMENT.md` - Multiple industry feature overview
 - `RUN_MIGRATION_014.md` - Migration 014 execution guide
+- `GOOGLE_DRIVE_SETUP.md` - Google Drive integration setup guide ⭐ NEW
+- `ADMIN_TOOLS_GUIDE.md` - Updated with Google Drive section
 
 
 
