@@ -224,3 +224,4 @@ pip install -r requirements.txt
 - Files are temporarily downloaded to extract text, then cleaned up automatically
 - Google Docs are automatically exported as DOCX before processing
 
+
