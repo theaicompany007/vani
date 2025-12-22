@@ -1,0 +1,24 @@
+[Unit]
+Description=VANI Outreach Command Center Docker Compose
+Documentation=https://github.com/your-org/your-repo
+After=docker.service infra-docker.service
+Requires=docker.service
+Wants=infra-docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/home/postgres/vani
+ExecStart=/usr/bin/docker compose -f docker-compose.yml -p vani up -d
+ExecStop=/usr/bin/docker compose -f docker-compose.yml -p vani stop
+TimeoutStartSec=0
+User=postgres
+Group=postgres
+
+# Restart policy
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+

@@ -1,46 +1,97 @@
 @echo off
+REM ============================================================
+REM PROJECT VANI - Virtual Agent Network Interface
+REM Launcher Script - Activates venv and starts application
+REM ============================================================
 
-echo ========================================
-echo   VANI - Virtual Agent Network Interface
-echo ========================================
+echo.
+echo ============================================================
+echo PROJECT VANI - Virtual Agent Network Interface
+echo ============================================================
 echo.
 
-REM Check if venv exists
-if not exist "venv\Scripts\activate.bat" (
-    echo [ERROR] Virtual environment not found!
-    echo Creating virtual environment...
-    python -m venv venv
-    echo.
-)
+REM Change to script directory
+cd /d "%~dp0"
 
-REM Activate virtual environment
-echo [1/2] Activating virtual environment...
-call venv\Scripts\activate.bat
+REM Check if Python is available
+python --version >nul 2>&1
 if errorlevel 1 (
-    echo [ERROR] Failed to activate virtual environment
+    echo ERROR: Python is not installed or not in PATH
+    echo Please install Python 3.11+ and try again
     pause
     exit /b 1
 )
-echo [OK] Virtual environment activated
-echo.
 
-REM Check if dependencies are installed
-echo [2/2] Checking dependencies...
-python -c "import flask" 2>nul
-if errorlevel 1 (
-    echo [INFO] Installing dependencies...
-    pip install -r requirements.txt
-    echo.
+REM [1/5] Check if venv exists, create if not
+echo [1/5] Checking virtual environment...
+if not exist "venv\" (
+    echo   Creating virtual environment...
+    python -m venv venv
+    if errorlevel 1 (
+        echo ERROR: Failed to create virtual environment
+        pause
+        exit /b 1
+    )
+    echo   OK: Virtual environment created
+) else (
+    echo   OK: Virtual environment exists
 )
 
-REM Start the app
-echo Starting VANI application...
+REM [2/5] Activate virtual environment
+echo [2/5] Activating virtual environment...
+call venv\Scripts\activate.bat
+if errorlevel 1 (
+    echo ERROR: Failed to activate virtual environment
+    pause
+    exit /b 1
+)
+echo   OK: Virtual environment activated
+
+REM [3/5] Upgrade pip
+echo [3/5] Upgrading pip...
+python -m pip install --upgrade pip --quiet
+if errorlevel 1 (
+    echo   WARNING: pip upgrade failed, continuing...
+)
+
+REM [4/5] Install/check dependencies
+echo [4/5] Installing dependencies...
+if exist "requirements.txt" (
+    python -m pip install -r requirements.txt --quiet
+    if errorlevel 1 (
+        echo   WARNING: Some dependencies may have failed to install
+    ) else (
+        echo   OK: Dependencies installed
+    )
+) else (
+    echo   WARNING: requirements.txt not found
+)
+
+REM [5/5] Start the application
+echo [5/5] Starting VANI application...
 echo.
+echo ============================================================
+echo Starting Flask server...
+echo ============================================================
+echo.
+
+REM Run the application
 python run.py
 
-REM Keep window open if there was an error
+REM Check exit code
 if errorlevel 1 (
     echo.
-    echo [ERROR] Application exited with an error
+    echo ============================================================
+    echo ERROR: Application exited with error code %errorlevel%
+    echo ============================================================
+    echo.
     pause
+    exit /b %errorlevel%
 )
+
+REM If we get here, application exited normally
+echo.
+echo ============================================================
+echo Application stopped
+echo ============================================================
+pause

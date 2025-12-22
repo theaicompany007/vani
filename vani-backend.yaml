@@ -1,0 +1,23 @@
+affinityCookieTtlSec: 0
+backends:
+- balancingMode: UTILIZATION
+  capacityScaler: 1.0
+  group: https://www.googleapis.com/compute/v1/projects/onlynereputation-agentic/zones/asia-south1-a/instanceGroups/rag-ig
+  portName: http-vani
+connectionDraining:
+  drainingTimeoutSec: 0
+creationTimestamp: '2025-12-14T17:10:01.928-08:00'
+description: ''
+enableCDN: false
+fingerprint: dyKhnc3B3jw=
+healthChecks:
+- https://www.googleapis.com/compute/v1/projects/onlynereputation-agentic/global/healthChecks/vani-health
+kind: compute#backendService
+loadBalancingScheme: EXTERNAL
+name: vani-backend
+protocol: HTTP
+selfLink: https://www.googleapis.com/compute/v1/projects/onlynereputation-agentic/global/backendServices/vani-backend
+sessionAffinity: NONE
+timeoutSec: 30
+usedBy:
+- reference: https://www.googleapis.com/compute/v1/projects/onlynereputation-agentic/global/urlMaps/rag-map

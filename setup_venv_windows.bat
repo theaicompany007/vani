@@ -47,23 +47,34 @@ if %errorlevel% neq 0 (
 )
 
 echo.
-echo [STEP 6] Installing psycopg2-binary with pre-built wheel...
+echo [STEP 6] Installing psycopg2-binary (optional - for direct PostgreSQL connections)...
 REM Try to install psycopg2-binary from a pre-built wheel
-pip install psycopg2-binary --only-binary :all:
+pip install psycopg2-binary --only-binary :all: 2>nul
 if %errorlevel% neq 0 (
     echo [WARNING] Failed to install psycopg2-binary with pre-built wheel
-    echo Trying alternative approach...
-    pip install psycopg2-binary==2.9.5
+    echo Trying alternative versions...
+    pip install psycopg2-binary==2.9.9 --only-binary :all: 2>nul
     if %errorlevel% neq 0 (
-        echo [ERROR] Failed to install psycopg2-binary
-        echo.
-        echo SOLUTION OPTIONS:
-        echo 1. Install Microsoft C++ Build Tools from:
-        echo    https://visualstudio.microsoft.com/visual-cpp-build-tools/
-        echo 2. Or use psycopg (psycopg3) instead by modifying requirements.txt
-        pause
-        exit /b 1
+        pip install psycopg2-binary==2.9.5 --only-binary :all: 2>nul
+        if %errorlevel% neq 0 (
+            echo [WARNING] psycopg2-binary installation failed - this is OK for Python 3.13
+            echo [INFO] psycopg2-binary is optional - Supabase client works without it
+            echo [INFO] Direct PostgreSQL migrations will be unavailable, but Supabase REST API works fine
+            echo.
+            echo OPTIONAL: To enable direct PostgreSQL connections:
+            echo 1. Install Microsoft C++ Build Tools from:
+            echo    https://visualstudio.microsoft.com/visual-cpp-build-tools/
+            echo 2. Then run: pip install psycopg2-binary
+            echo.
+            set PSYCOPG2_SKIPPED=1
+        ) else (
+            echo [SUCCESS] psycopg2-binary installed successfully
+        )
+    ) else (
+        echo [SUCCESS] psycopg2-binary installed successfully
     )
+) else (
+    echo [SUCCESS] psycopg2-binary installed successfully
 )
 
 echo.
@@ -88,6 +99,12 @@ if %errorlevel% neq 0 (
     echo [ERROR] Verification failed
     pause
     exit /b 1
+)
+
+if defined PSYCOPG2_SKIPPED (
+    echo.
+    echo [INFO] Note: psycopg2-binary was skipped (optional dependency)
+    echo [INFO] VANI will work fine using Supabase REST API
 )
 
 echo.

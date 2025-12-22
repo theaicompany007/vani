@@ -1,0 +1,25 @@
+[Unit]
+Description=Ngrok Tunnel for VANI Outreach Command Center
+Documentation=https://ngrok.com/docs
+After=network.target vani-docker.service
+Wants=vani-docker.service
+
+[Service]
+Type=simple
+User=postgres
+Group=postgres
+WorkingDirectory=/home/postgres/vani
+Environment="NGROK_AUTH_TOKEN=35hWIb0qQ1hFTb6coNwwVN2lwnw_2ANeLdD3x6mjkH2yRB7f1"
+ExecStart=/usr/local/bin/ngrok start --config ngrok-vani.yml vani
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+
