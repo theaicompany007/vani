@@ -27,7 +27,6 @@ data/
 *.csv
 
 # Configuration files with secrets
-#config/
 *.json
 !package.json
 !package-lock.json
@@ -63,19 +62,3 @@ ngrok.config.json
 *.db
 *.sqlite
 *.sqlite3
-
-
-
-
-
-
-
-
-
-
-
-
-
-"config/google-sheet-project-vani-480503-f92266b789de.json" 
-"config/google-sheet-project-vani-480503-f92266b789de.json" 
-"config/google-sheet-project-vani-480503-f92266b789de.json" 
