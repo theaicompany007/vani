@@ -26,8 +26,10 @@ data/
 *.csv
 
 # Configuration files with secrets
-config/
+#config/
 *.json
+!google-drive-project-vani-480503-3cec3ecb0a13.json
+!google-sheet-project-vani-480503-f92266b789de.json
 !package.json
 !package-lock.json
 !tailwind.config.js

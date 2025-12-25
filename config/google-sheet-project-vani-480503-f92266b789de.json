@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "project-vani-480503",
+  "private_key_id": "f92266b789de44ff0bd0df519d434edf83cdebd9",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDj/rqNOzCxx/P5\n7GnbNuJvBM/3nQ/A7kcIpd+aGvas3UeiKr2WhyCReqjTUfuRScSyg26+v8OZw6nF\nZZ+OPiw2oEkRrt0JqnpsUAazQgfC3tqhY9lB3EoyVWcLsQeBcW/gTM+jppmXlo2/\nodOrRQRxh7c+ml9tvRz9mo+hGWzDoxX+efMHeoJKTOa959VPcNWbpUd80wGHkcv9\n5wg8WRd61ZYGxyq8IgEmWCxVJ/b9qBrERDAfFIqDUCWfOucRb5HucNXJdffoQGmc\niqlk7gR6KEM4oewW5ticXbYsn05O7OSVbjymO8s40kM4rvElHDuI0mgSIlnhCGr8\nKmFisMfdAgMBAAECggEACuFAlursmDNDRS7UX1xnYlEKY+soEbbH3NWzjaz8jq5m\n6R9yhCYnIPdyP9ar81iKl9KLUfQgj1bQZBsvycUq7Xa+febzD9oa36PS/1y8Nj8A\naQ600v6CQOl6knWBzETKSAZ1AH7RBLRFHTsJo4+WgRzERcBuo4k7LVlMl4K5LL26\nyRHtwL6hKv1MFVXcaQ589GuRSADYCblmZWApQB/TdrB9u9NDYierM1RNPrbgzDJV\nWY4Y4jbqLIBDlOZ2bfALsSrcT8JgCXAFHPP3h+4WBCW8PVcmUVfPzhraRaOGKKho\nKpTHaxEEL22TD5h3pw6Y3EXqde8n7zoGCSeIFngtKQKBgQDxwrpZdw87D0c01sCp\ngQkLixxfyFlwUzJWjwCLBgJ3XGnuryKDfbrExPRvX5iS1IvbBZL/0a6uDJm8CTeI\n46YHwqlYdzWzgHfwwK2rNHt91E0K6gEj+mRMyzqoDyxt9/FksbvAxG/rF+pXIRaR\nmOGrBYHITTsi9T0PCPCAZUryuQKBgQDxbHFFSshCzrARHmPvuS+BTS6UiGRA+P2t\niXxGy4zQcLetdKlgiHj0vgmdWPqIq1xkwNTiGopboo8IWOWNSCrpSqDLIwEjZfwC\nqPSaYxfr/OIuIVfT3X85xO1ofEvhoLWfOlcViikW9OS+jyGGN1tnEen6JPdS4n5R\nPxTOJGo8RQKBgQDjDn8ULVS5pDS9NICH8e97zvAcKT+O1iRt1SquZzuDvOCk0gl5\nM2lpCo2D2GWkaUjcsFSKPPVw89ajGoj04NF7cmC3/GYMKzj6fQvewpDE8dJV0Ma3\ncqAm26xAUNfqhDZL2v06I4P1aWWm5SWcIti3VZm5dId44piw+TVfcUK9yQKBgCf4\n/4wshJnjJO3ArWVMsRvkjpjTOF41m7L295e1Lhx4/UB/92dfUT+ck3T0/Y5RaRvZ\nfaXuJQhlEu+b4G4TC9/Slmrr4c1dnmtGVDGXxKczGLPwm10d6GnFPFW3dszl0gyK\nGU8csA73/0O56SAS3FRld+sN4dFcZPPI0QYMq3ZNAoGBAI48XoGn3dBcELpAPgFk\n/5zvFG8F5qzGwhH5jJ1k4gkPOHBVRfRWbHQvdjY8qNxmZ17kqzOUabGql2RK0Bty\nL6qslU0JwRsipnqz1GF13CiyD12GLCCL2VXBTfSxvn31AvU6bnCSi61hYeYuJ651\nXUJr9zfTJxN370/NP/NVGWi4\n-----END PRIVATE KEY-----\n",
+  "client_email": "sheets-service-account@project-vani-480503.iam.gserviceaccount.com",
+  "client_id": "103294371148719923590",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/sheets-service-account%40project-vani-480503.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
