@@ -119,7 +119,7 @@ def kill_existing_processes():
 def print_header():
     """Print startup header"""
     print("\n" + "="*70)
-    print("  VANI OUTREACH COMMAND CENTER - STARTUP")
+    print("  VANI OUTREACH COMMAND CENTER - STARTUP - 25th Dec 2025...")
     print("="*70 + "\n")
 
 
