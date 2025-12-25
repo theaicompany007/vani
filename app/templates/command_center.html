@@ -333,6 +333,20 @@
                 </div>
             </div>
             
+            <!-- Search Bar for Targets -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+                <div class="flex-1 relative">
+                    <input type="text" id="pitch-targets-search" placeholder="Search targets by company, contact, role, industry, email, or phone..." 
+                           class="w-full px-4 py-2 border border-slate-300 rounded-lg pr-10 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                           oninput="handlePitchTargetsSearchInput(event)"
+                           onkeyup="handlePitchTargetsSearchKeyup(event)">
+                    <i class="fa-solid fa-search absolute right-3 top-3 text-slate-400"></i>
+                    <button id="pitch-targets-search-clear" onclick="clearPitchTargetsSearch()" class="hidden absolute right-10 top-3 text-slate-400 hover:text-slate-600" title="Clear search">
+                        <i class="fa-solid fa-times"></i>
+                    </button>
+                </div>
+            </div>
+            
             <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
                 <h2 class="text-2xl font-bold text-slate-900 mb-4">Pitch Presentation</h2>
                 <p class="text-slate-600 mb-6">Generate and send AI-powered pitch presentations to your targets.</p>
@@ -723,10 +737,14 @@
             <!-- Search and Filters for Targets -->
             <div class="mb-4 flex gap-2 items-center">
                 <div class="flex-1 relative">
-                    <input type="text" id="targets-search" placeholder="Search targets by company, contact, or role..." 
-                           class="w-full px-4 py-2 border border-slate-300 rounded-lg pr-10"
-                           oninput="filterTargets()">
+                    <input type="text" id="targets-search" placeholder="Search targets by company, contact, role, industry, email, or phone..." 
+                           class="w-full px-4 py-2 border border-slate-300 rounded-lg pr-10 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                           oninput="handleTargetsSearchInput(event)"
+                           onkeyup="handleTargetsSearchKeyup(event)">
                     <i class="fa-solid fa-search absolute right-3 top-3 text-slate-400"></i>
+                    <button id="targets-search-clear" onclick="clearTargetsSearch()" class="hidden absolute right-10 top-3 text-slate-400 hover:text-slate-600" title="Clear search">
+                        <i class="fa-solid fa-times"></i>
+                    </button>
                 </div>
             </div>
             
@@ -1248,6 +1266,40 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Knowledge Base Document View Modal -->
+                <div id="kb-document-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+                    <div class="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+                        <div class="p-6 border-b border-slate-200 flex-shrink-0">
+                            <div class="flex justify-between items-start">
+                                <div class="flex-1">
+                                    <h3 id="kb-doc-modal-title" class="text-xl font-bold text-slate-900 mb-2"></h3>
+                                    <div class="flex items-center gap-2 text-sm text-slate-600">
+                                        <span id="kb-doc-modal-collection" class="px-2 py-1 bg-slate-100 rounded text-xs"></span>
+                                        <span id="kb-doc-modal-filename" class="text-slate-500"></span>
+                                    </div>
+                                </div>
+                                <button onclick="closeKBDocumentModal()" class="text-slate-400 hover:text-slate-600 ml-4">
+                                    <i class="fa-solid fa-times text-xl"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="p-6 overflow-y-auto flex-1">
+                            <div id="kb-doc-modal-metadata" class="mb-4 p-3 bg-slate-50 rounded-lg border border-slate-200"></div>
+                            <div class="prose max-w-none">
+                                <pre id="kb-doc-modal-content" class="whitespace-pre-wrap text-sm text-slate-700 font-sans bg-slate-50 p-4 rounded-lg border border-slate-200 max-h-96 overflow-y-auto"></pre>
+                            </div>
+                        </div>
+                        <div class="p-6 border-t border-slate-200 flex-shrink-0 flex gap-3">
+                            <button onclick="closeKBDocumentModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-medium">
+                                Close
+                            </button>
+                            <button onclick="copyKBDocumentContent()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium">
+                                <i class="fa-solid fa-copy mr-2"></i>Copy to Clipboard
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- Industry Persona Mapping Tab -->
@@ -1506,11 +1558,35 @@
 
                 <!-- File List -->
                 <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-                    <div class="mb-4 flex justify-between items-center">
-                        <input type="text" id="drive-search" placeholder="Search files (not yet implemented)" class="max-w-sm px-3 py-2 border border-slate-300 rounded-lg text-sm" disabled>
-                        <button onclick="syncSelectedDriveFiles()" id="drive-sync-btn" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed" disabled>
-                            <i class="fa-solid fa-cloud-arrow-up mr-2"></i>Sync Selected (<span id="drive-selected-count">0</span>)
-                        </button>
+                    <div class="mb-4 space-y-3">
+                        <div class="flex items-center gap-2 flex-1 max-w-md">
+                            <input type="text" id="drive-search" placeholder="Search files and folders..." 
+                                   class="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                   onkeyup="handleDriveSearchKeyup(event)"
+                                   oninput="handleDriveSearchInput(event)">
+                            <button onclick="clearDriveSearch()" id="drive-search-clear" class="hidden px-3 py-2 text-slate-600 hover:text-slate-900" title="Clear search">
+                                <i class="fa-solid fa-times"></i>
+                            </button>
+                        </div>
+                        <div class="flex items-center gap-4">
+                            <div class="flex items-center gap-2">
+                                <label class="text-sm font-medium text-slate-700">Collection:</label>
+                                <select id="drive-collection-select" onchange="updateDriveSyncButton()" class="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                                    <option value="">Auto (from folder path)</option>
+                                </select>
+                                <button onclick="loadDriveCollections()" class="px-2 py-2 text-slate-600 hover:text-slate-900" title="Refresh collections">
+                                    <i class="fa-solid fa-sync-alt"></i>
+                                </button>
+                            </div>
+                            <div class="text-xs text-slate-500" id="drive-collection-info">
+                                Files will be synced to collection based on folder path
+                            </div>
+                        </div>
+                        <div class="flex justify-end">
+                            <button onclick="syncSelectedDriveFiles()" id="drive-sync-btn" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                                <i class="fa-solid fa-cloud-arrow-up mr-2"></i>Sync Selected (<span id="drive-selected-count">0</span>)
+                            </button>
+                        </div>
                     </div>
 
                     <div id="drive-files-container" class="space-y-2">
@@ -1625,6 +1701,8 @@
                 loadAIFinderIndustries();
             }
             if (tabId === 'pitch') {
+                // Reload industries filtered to only show those with targets
+                loadIndustries(false, true);
                 if (typeof loadPitchTargets === 'function') loadPitchTargets();
                 updatePitchIndustryDisplay();
                 // Restore pitch if it exists and load history
@@ -1926,17 +2004,32 @@
         }
 
         // --- TARGET LIST LOGIC ---
+        let targetsSearchTimeout = null;
+        
         function filterTargets() {
-            targetsSearchTerm = document.getElementById('targets-search')?.value.toLowerCase() || '';
+            const searchInput = document.getElementById('targets-search');
+            if (!searchInput) return;
             
-            // Filter targets by search term
+            targetsSearchTerm = searchInput.value.toLowerCase().trim();
+            
+            // Filter targets by search term - search in company name, contact name, role, industry, email, and phone
             let filtered = allTargets;
             if (targetsSearchTerm) {
-                filtered = allTargets.filter(t => 
-                    t.name.toLowerCase().includes(targetsSearchTerm) ||
-                    (t.role && t.role.toLowerCase().includes(targetsSearchTerm)) ||
-                    (t.industry && t.industry.toLowerCase().includes(targetsSearchTerm))
-                );
+                filtered = allTargets.filter(t => {
+                    const companyName = (t.company_name || '').toLowerCase();
+                    const contactName = (t.contact_name || t.name || '').toLowerCase();
+                    const role = (t.role || '').toLowerCase();
+                    const industry = (t.industry || '').toLowerCase();
+                    const email = (t.email || '').toLowerCase();
+                    const phone = (t.phone || '').toLowerCase();
+                    
+                    return companyName.includes(targetsSearchTerm) ||
+                           contactName.includes(targetsSearchTerm) ||
+                           role.includes(targetsSearchTerm) ||
+                           industry.includes(targetsSearchTerm) ||
+                           email.includes(targetsSearchTerm) ||
+                           phone.includes(targetsSearchTerm);
+                });
             }
             
             // Calculate pagination
@@ -1963,6 +2056,58 @@
             }
             
             renderTargetList(filtered.length);
+        }
+        
+        function handleTargetsSearchInput(event) {
+            const searchInput = event.target;
+            const clearBtn = document.getElementById('targets-search-clear');
+            
+            // Show/hide clear button
+            if (searchInput.value.trim()) {
+                if (clearBtn) clearBtn.classList.remove('hidden');
+            } else {
+                if (clearBtn) clearBtn.classList.add('hidden');
+            }
+            
+            // Debounce search for better performance
+            if (targetsSearchTimeout) {
+                clearTimeout(targetsSearchTimeout);
+            }
+            
+            targetsSearchTimeout = setTimeout(() => {
+                filterTargets();
+            }, 200); // Search while typing with 200ms delay
+        }
+        
+        function handleTargetsSearchKeyup(event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                if (targetsSearchTimeout) {
+                    clearTimeout(targetsSearchTimeout);
+                }
+                filterTargets();
+            }
+        }
+        
+        function clearTargetsSearch() {
+            const searchInput = document.getElementById('targets-search');
+            const clearBtn = document.getElementById('targets-search-clear');
+            
+            if (searchInput) {
+                searchInput.value = '';
+            }
+            if (clearBtn) {
+                clearBtn.classList.add('hidden');
+            }
+            
+            if (targetsSearchTimeout) {
+                clearTimeout(targetsSearchTimeout);
+                targetsSearchTimeout = null;
+            }
+            
+            // Reset search and filter
+            targetsSearchTerm = '';
+            filterTargets();
         }
         
         function targetsPreviousPage() {
@@ -4725,11 +4870,15 @@
         let userAssignedIndustries = []; // Used for dashboard dropdown - contains only user's assigned industries
         let currentIndustryId = null;
         
-        async function loadIndustries(loadAll = false) {
+        async function loadIndustries(loadAll = false, withTargetsOnly = false) {
             try {
                 // For main dashboard dropdown, use filtered industries (user's assigned)
                 // For User Management, use all industries if loadAll is true
-                const url = loadAll ? '/api/industries?all=true' : '/api/industries';
+                // For Pitch/Targets tabs, filter to only industries with targets
+                let url = loadAll ? '/api/industries?all=true' : '/api/industries';
+                if (withTargetsOnly) {
+                    url += (url.includes('?') ? '&' : '?') + 'with_targets=true';
+                }
                 const response = await fetch(url, { credentials: 'include' });
                 const data = await response.json();
                 if (data.success && data.industries) {
@@ -4759,6 +4908,10 @@
                                 updateIndustryBadge();
                                 // Update industry display on targets tab
                                 updateTargetsIndustryDisplay();
+                            } else {
+                                // If no default, ensure "All Industries" is selected
+                                selector.value = '';
+                                currentIndustryId = null;
                             }
                         }
                     }
@@ -4775,19 +4928,23 @@
         
         async function switchIndustry(industryId) {
             try {
+                // Handle empty string as null for "All Industries"
+                const industryIdToSend = industryId && industryId.trim() ? industryId : null;
+                
                 const response = await fetch('/api/industries/switch', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     credentials: 'include',
-                    body: JSON.stringify({ industry_id: industryId || null })
+                    body: JSON.stringify({ industry_id: industryIdToSend })
                 });
                 
                 const data = await response.json();
                 if (data.success) {
-                    currentIndustryId = industryId;
+                    currentIndustryId = industryIdToSend;
                     updateIndustryBadge();
                     updateTargetsIndustryDisplay();
-                    showToast('success', 'Industry Switched', `Active industry: ${data.industry?.name || 'All Industries'}`, 3000);
+                    const industryName = industryIdToSend ? (data.industry?.name || 'Selected Industry') : 'All Industries';
+                    showToast('success', 'Industry Switched', `Active industry: ${industryName}`, 3000);
                     
                     // Reload pitch targets if on pitch tab
                     const currentTab = document.querySelector('.nav-active')?.getAttribute('onclick')?.match(/'(\w+)'/)?.[1];
@@ -6181,6 +6338,8 @@
         let currentPitchId = null;
         let currentPitchData = null;
         let currentPitchTargetId = null;
+        let allPitchTargets = []; // Store all targets for filtering
+        let pitchTargetsSearchTimeout = null;
         
         async function loadPitchTargets() {
             const select = document.getElementById('pitch-target-select');
@@ -6202,29 +6361,13 @@
                 const response = await fetch(url, { credentials: 'include' });
                 const data = await response.json();
                 if (data.success && data.targets) {
-                    select.innerHTML = '<option value="">-- Select a target --</option>';
-                    if (data.targets.length === 0) {
-                        const option = document.createElement('option');
-                        option.value = '';
-                        option.textContent = currentIndustryId ? '-- No targets found for this industry --' : '-- No targets found --';
-                        option.disabled = true;
-                        select.appendChild(option);
-                        if (countSpan) {
-                            countSpan.textContent = 'No targets found. Create targets in "Target Hit List" tab.';
-                        }
-                    } else {
-                        data.targets.forEach(target => {
-                            const option = document.createElement('option');
-                            option.value = target.id;
-                            option.textContent = `${target.company_name} - ${target.contact_name || 'N/A'}`;
-                            select.appendChild(option);
-                        });
-                        if (countSpan) {
-                            const industryText = currentIndustryId ? ` for selected industry` : '';
-                            countSpan.textContent = `${data.targets.length} target${data.targets.length !== 1 ? 's' : ''} available${industryText}`;
-                        }
-                    }
+                    // Store all targets for filtering
+                    allPitchTargets = data.targets;
+                    
+                    // Apply current search filter if any
+                    filterPitchTargets();
                 } else {
+                    allPitchTargets = [];
                     select.innerHTML = '<option value="">-- Select a target --</option>';
                     const option = document.createElement('option');
                     option.value = '';
@@ -6237,6 +6380,7 @@
                 }
             } catch (error) {
                 console.error('Error loading targets for pitch:', error);
+                allPitchTargets = [];
                 const select = document.getElementById('pitch-target-select');
                 if (select) {
                     select.innerHTML = '<option value="">-- Error loading targets --</option>';
@@ -6245,6 +6389,112 @@
                     countSpan.textContent = 'Error loading targets. Click Refresh to try again.';
                 }
             }
+        }
+        
+        function filterPitchTargets() {
+            const select = document.getElementById('pitch-target-select');
+            const countSpan = document.getElementById('pitch-targets-count');
+            const searchInput = document.getElementById('pitch-targets-search');
+            
+            if (!select) return;
+            
+            // Get search term
+            const searchTerm = searchInput ? searchInput.value.toLowerCase().trim() : '';
+            
+            // Filter targets based on search term
+            let filtered = allPitchTargets;
+            if (searchTerm) {
+                filtered = allPitchTargets.filter(target => {
+                    const companyName = (target.company_name || '').toLowerCase();
+                    const contactName = (target.contact_name || '').toLowerCase();
+                    const role = (target.role || '').toLowerCase();
+                    const industry = (target.industry || '').toLowerCase();
+                    const email = (target.email || '').toLowerCase();
+                    const phone = (target.phone || '').toLowerCase();
+                    
+                    return companyName.includes(searchTerm) ||
+                           contactName.includes(searchTerm) ||
+                           role.includes(searchTerm) ||
+                           industry.includes(searchTerm) ||
+                           email.includes(searchTerm) ||
+                           phone.includes(searchTerm);
+                });
+            }
+            
+            // Update dropdown
+            select.innerHTML = '<option value="">-- Select a target --</option>';
+            if (filtered.length === 0) {
+                const option = document.createElement('option');
+                option.value = '';
+                option.textContent = searchTerm ? '-- No targets match your search --' : (currentIndustryId ? '-- No targets found for this industry --' : '-- No targets found --');
+                option.disabled = true;
+                select.appendChild(option);
+            } else {
+                filtered.forEach(target => {
+                    const option = document.createElement('option');
+                    option.value = target.id;
+                    option.textContent = `${target.company_name} - ${target.contact_name || 'N/A'}`;
+                    select.appendChild(option);
+                });
+            }
+            
+            // Update count
+            if (countSpan) {
+                const industryText = currentIndustryId ? ` for selected industry` : '';
+                const searchText = searchTerm ? ` (${filtered.length} of ${allPitchTargets.length} match search)` : '';
+                countSpan.textContent = `${filtered.length} target${filtered.length !== 1 ? 's' : ''} available${industryText}${searchText}`;
+            }
+        }
+        
+        function handlePitchTargetsSearchInput(event) {
+            const searchInput = event.target;
+            const clearBtn = document.getElementById('pitch-targets-search-clear');
+            
+            // Show/hide clear button
+            if (searchInput.value.trim()) {
+                if (clearBtn) clearBtn.classList.remove('hidden');
+            } else {
+                if (clearBtn) clearBtn.classList.add('hidden');
+            }
+            
+            // Debounce search for better performance
+            if (pitchTargetsSearchTimeout) {
+                clearTimeout(pitchTargetsSearchTimeout);
+            }
+            
+            pitchTargetsSearchTimeout = setTimeout(() => {
+                filterPitchTargets();
+            }, 200); // Search while typing with 200ms delay
+        }
+        
+        function handlePitchTargetsSearchKeyup(event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                if (pitchTargetsSearchTimeout) {
+                    clearTimeout(pitchTargetsSearchTimeout);
+                }
+                filterPitchTargets();
+            }
+        }
+        
+        function clearPitchTargetsSearch() {
+            const searchInput = document.getElementById('pitch-targets-search');
+            const clearBtn = document.getElementById('pitch-targets-search-clear');
+            
+            if (searchInput) {
+                searchInput.value = '';
+            }
+            if (clearBtn) {
+                clearBtn.classList.add('hidden');
+            }
+            
+            if (pitchTargetsSearchTimeout) {
+                clearTimeout(pitchTargetsSearchTimeout);
+                pitchTargetsSearchTimeout = null;
+            }
+            
+            // Reset search and filter
+            filterPitchTargets();
         }
         
         // Handle target change - clear pitch preview and load history
@@ -6737,19 +6987,95 @@
                     
                     // Show/hide email-specific fields
                     const emailFields = document.getElementById('pitch-send-preview-email-fields');
+                    const contactInfo = document.getElementById('pitch-send-preview-contact-info');
+                    const signatureSection = document.getElementById('pitch-send-preview-signature-section');
                     const messageLabel = document.getElementById('pitch-send-preview-message-label');
+                    
+                    // Populate target/contact information
+                    const target = data.target || {};
+                    const signature = data.signature || {};
+                    
+                    // Store target ID for saving updates
+                    // Try to get from target object first, or fetch from pitch if needed
+                    window.currentPreviewTargetId = target.id || null;
+                    
+                    // If still no target ID, try to get it from the pitch record
+                    if (!window.currentPreviewTargetId && currentPitchId) {
+                        try {
+                            const pitchResponse = await fetch(`/api/pitch/preview/${currentPitchId}`, {
+                                method: 'GET',
+                                credentials: 'include'
+                            });
+                            const pitchData = await pitchResponse.json();
+                            if (pitchData.success && pitchData.target && pitchData.target.id) {
+                                window.currentPreviewTargetId = pitchData.target.id;
+                            }
+                        } catch (e) {
+                            console.warn('Could not fetch target ID from pitch:', e);
+                        }
+                    }
+                    
+                    console.log('Target ID stored:', window.currentPreviewTargetId, 'Target data:', target);
                     
                     if (channel === 'email') {
                         emailFields.classList.remove('hidden');
+                        contactInfo.classList.add('hidden');
                         messageLabel.textContent = 'Message';
-                        document.getElementById('pitch-send-preview-from').value = 'Project VANI Team';
+                        
+                        // Populate To field
+                        const toName = target.contact_name || target.company_name || 'Recipient';
+                        const toEmail = target.email || '';
+                        document.getElementById('pitch-send-preview-to-name').textContent = toName;
+                        const emailInput = document.getElementById('pitch-send-preview-to-email-input');
+                        const emailDisplay = document.getElementById('pitch-send-preview-to-email-display');
+                        if (toEmail && toEmail !== 'No email available') {
+                            emailInput.value = toEmail;
+                            emailDisplay.textContent = toEmail;
+                            emailDisplay.classList.remove('hidden');
+                        } else {
+                            emailInput.value = '';
+                            emailInput.placeholder = 'No email available - Enter email address';
+                            emailDisplay.classList.add('hidden');
+                        }
+                        
+                        // Populate From field
+                        const fromName = signature.from_name || 'Project VANI Team';
+                        const fromEmail = signature.from_email || '';
+                        document.getElementById('pitch-send-preview-from').value = fromName;
+                        document.getElementById('pitch-send-preview-from-email').textContent = fromEmail || '';
+                        
                         document.getElementById('pitch-send-preview-subject').value = previewSubject;
                     } else if (channel === 'whatsapp') {
                         emailFields.classList.add('hidden');
+                        contactInfo.classList.remove('hidden');
                         messageLabel.textContent = 'WhatsApp Message';
+                        
+                        const contactName = target.contact_name || target.company_name || 'Recipient';
+                        const phone = target.phone || '';
+                        document.getElementById('pitch-send-preview-contact-name').textContent = contactName;
+                        document.getElementById('pitch-send-preview-phone-section').classList.remove('hidden');
+                        document.getElementById('pitch-send-preview-linkedin-section').classList.add('hidden');
+                        document.getElementById('pitch-send-preview-phone-input').value = phone;
                     } else if (channel === 'linkedin') {
                         emailFields.classList.add('hidden');
+                        contactInfo.classList.remove('hidden');
                         messageLabel.textContent = 'LinkedIn Message';
+                        
+                        const contactName = target.contact_name || target.company_name || 'Recipient';
+                        const linkedin = target.linkedin_url || '';
+                        document.getElementById('pitch-send-preview-contact-name').textContent = contactName;
+                        document.getElementById('pitch-send-preview-phone-section').classList.add('hidden');
+                        document.getElementById('pitch-send-preview-linkedin-section').classList.remove('hidden');
+                        document.getElementById('pitch-send-preview-linkedin-input').value = linkedin;
+                    }
+                    
+                    // Show signature preview (render as HTML, not plain text)
+                    if (signature.signature_text) {
+                        signatureSection.classList.remove('hidden');
+                        // Use innerHTML to render HTML signature properly
+                        document.getElementById('pitch-send-preview-signature-preview').innerHTML = signature.signature_text;
+                    } else {
+                        signatureSection.classList.add('hidden');
                     }
                     
                     // Set message content (editable)
@@ -6774,20 +7100,37 @@
             const messageTextarea = document.getElementById('pitch-send-preview-message');
             const renderedDiv = document.getElementById('pitch-send-preview-rendered');
             const toggleBtn = document.getElementById('btn-toggle-preview-mode');
+            const signaturePreview = document.getElementById('pitch-send-preview-signature-preview');
+            const signatureSection = document.getElementById('pitch-send-preview-signature-section');
             
             if (pitchPreviewMode === 'edit') {
                 // Switch to preview mode
                 const markdownText = messageTextarea.value;
                 const htmlContent = convertMarkdownToHTML(markdownText);
-                renderedDiv.innerHTML = htmlContent;
+                
+                // Include signature in preview if it exists
+                let fullPreview = htmlContent;
+                if (signaturePreview && signaturePreview.innerHTML && signatureSection && !signatureSection.classList.contains('hidden')) {
+                    fullPreview = htmlContent + '<div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e2e8f0;">' + signaturePreview.innerHTML + '</div>';
+                }
+                
+                renderedDiv.innerHTML = fullPreview;
                 messageTextarea.classList.add('hidden');
                 renderedDiv.classList.remove('hidden');
+                // Hide the separate signature section since it's already in the preview
+                if (signatureSection) {
+                    signatureSection.classList.add('hidden');
+                }
                 toggleBtn.innerHTML = '<i class="fa-solid fa-edit mr-1"></i>Edit';
                 pitchPreviewMode = 'preview';
             } else {
                 // Switch to edit mode
                 messageTextarea.classList.remove('hidden');
                 renderedDiv.classList.add('hidden');
+                // Show the separate signature section again in edit mode
+                if (signatureSection && signaturePreview && signaturePreview.innerHTML) {
+                    signatureSection.classList.remove('hidden');
+                }
                 toggleBtn.innerHTML = '<i class="fa-solid fa-eye mr-1"></i>Preview';
                 pitchPreviewMode = 'edit';
             }
@@ -6910,6 +7253,31 @@ Project VANI Team`;
             btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Sending...';
             
             try {
+                // If email channel and email was updated, save it first
+                if (currentPitchChannel === 'email' && window.currentPreviewTargetId) {
+                    const emailInput = document.getElementById('pitch-send-preview-to-email-input');
+                    const updatedEmail = emailInput ? emailInput.value.trim() : '';
+                    if (updatedEmail) {
+                        // Save the email to target before sending
+                        try {
+                            const saveResponse = await fetch(`/api/targets/${window.currentPreviewTargetId}`, {
+                                method: 'PATCH',
+                                headers: {
+                                    'Content-Type': 'application/json'
+                                },
+                                credentials: 'include',
+                                body: JSON.stringify({ email: updatedEmail })
+                            });
+                            if (saveResponse.ok) {
+                                console.log('Email saved to target before sending');
+                            }
+                        } catch (saveError) {
+                            console.warn('Could not save email before sending:', saveError);
+                            // Continue anyway - the API might accept it in the request
+                        }
+                    }
+                }
+                
                 // Get edited content from modal
                 const message = document.getElementById('pitch-send-preview-message').value;
                 const sendData = {
@@ -6921,6 +7289,11 @@ Project VANI Team`;
                 if (currentPitchChannel === 'email') {
                     sendData.subject = document.getElementById('pitch-send-preview-subject').value;
                     sendData.from = document.getElementById('pitch-send-preview-from').value;
+                    // Include email from input if available (as fallback)
+                    const emailInput = document.getElementById('pitch-send-preview-to-email-input');
+                    if (emailInput && emailInput.value.trim()) {
+                        sendData.to_email = emailInput.value.trim();
+                    }
                 }
                 
                 const response = await fetch(`/api/pitch/send/${currentPitchId}`, {
@@ -6963,6 +7336,96 @@ Project VANI Team`;
             document.getElementById('pitch-send-preview-message').classList.remove('hidden');
             document.getElementById('pitch-send-preview-rendered').classList.add('hidden');
             document.getElementById('btn-toggle-preview-mode').innerHTML = '<i class="fa-solid fa-eye mr-1"></i>Preview';
+            // Show signature section again when closing (reset to edit mode)
+            const signatureSection = document.getElementById('pitch-send-preview-signature-section');
+            const signaturePreview = document.getElementById('pitch-send-preview-signature-preview');
+            if (signatureSection && signaturePreview && signaturePreview.innerHTML) {
+                signatureSection.classList.remove('hidden');
+            }
+            window.currentPreviewTargetId = null;
+        }
+        
+        // Save target contact information (email, phone, LinkedIn)
+        async function saveTargetContactInfo() {
+            if (!window.currentPreviewTargetId) {
+                showToast('error', 'Error', 'No target selected', 3000);
+                return;
+            }
+            
+            // Find the save button (could be in email or contact info section)
+            const saveBtn = document.getElementById('btn-save-contact-info') || document.getElementById('btn-save-email-info');
+            if (!saveBtn) {
+                showToast('error', 'Error', 'Save button not found', 3000);
+                return;
+            }
+            
+            const originalText = saveBtn.innerHTML;
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Saving...';
+            
+            try {
+                const updateData = {};
+                
+                // Get email if in email mode
+                if (currentPitchChannel === 'email') {
+                    const email = document.getElementById('pitch-send-preview-to-email-input').value.trim();
+                    if (email) {
+                        updateData.email = email;
+                    }
+                }
+                
+                // Get phone if in WhatsApp mode
+                if (currentPitchChannel === 'whatsapp') {
+                    const phone = document.getElementById('pitch-send-preview-phone-input').value.trim();
+                    if (phone) {
+                        updateData.phone = phone;
+                    }
+                }
+                
+                // Get LinkedIn if in LinkedIn mode
+                if (currentPitchChannel === 'linkedin') {
+                    const linkedin = document.getElementById('pitch-send-preview-linkedin-input').value.trim();
+                    if (linkedin) {
+                        updateData.linkedin_url = linkedin;
+                    }
+                }
+                
+                if (Object.keys(updateData).length === 0) {
+                    showToast('warning', 'No Changes', 'Please enter information to save', 3000);
+                    saveBtn.disabled = false;
+                    saveBtn.innerHTML = originalText;
+                    return;
+                }
+                
+                const response = await fetch(`/api/targets/${window.currentPreviewTargetId}`, {
+                    method: 'PATCH',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify(updateData)
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    showToast('success', 'Saved', 'Contact information updated successfully', 3000);
+                    
+                    // Update display
+                    if (currentPitchChannel === 'email' && updateData.email) {
+                        document.getElementById('pitch-send-preview-to-email-display').textContent = updateData.email;
+                        document.getElementById('pitch-send-preview-to-email-display').classList.remove('hidden');
+                    }
+                } else {
+                    showToast('error', 'Error', data.error || 'Failed to save contact information', 3000);
+                }
+            } catch (error) {
+                console.error('Error saving contact info:', error);
+                showToast('error', 'Error', 'Failed to save contact information', 3000);
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = originalText;
+            }
         }
 
         // --- COMPANIES MANAGEMENT FUNCTIONS ---
@@ -10341,6 +10804,7 @@ Project VANI Team`;
                 allIndustries = userAssignedIndustries;
             } else if (tabId === 'google-drive') {
                 loadDriveFiles('root');
+                loadDriveCollections();
             }
         }
 
@@ -10397,20 +10861,25 @@ Project VANI Team`;
                 const iconColor = file.isFolder ? 'text-blue-500' : 'text-slate-500';
                 const size = file.size ? formatFileSize(file.size) : '-';
                 const modified = file.modifiedTime ? new Date(file.modifiedTime).toLocaleDateString() : '-';
+                const isIngested = file.isIngested || false;
                 
                 html += `
-                    <div class="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-200 hover:bg-slate-100 transition-colors">
+                    <div class="flex items-center justify-between p-3 bg-slate-50 rounded-lg border ${isIngested ? 'border-emerald-300 bg-emerald-50' : 'border-slate-200'} hover:bg-slate-100 transition-colors">
                         <div class="flex items-center gap-3 flex-1">
-                            <input type="checkbox" ${file.isFolder ? 'disabled' : ''} 
+                            <input type="checkbox" ${file.isFolder ? 'disabled' : (isIngested ? 'disabled' : '')} 
                                    ${isSelected ? 'checked' : ''} 
+                                   ${isIngested ? 'title="Already ingested"' : ''}
                                    onchange="toggleDriveFileSelection('${file.id}', this.checked)"
-                                   class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
+                                   class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 ${isIngested ? 'opacity-50 cursor-not-allowed' : ''}">
                             <i class="fa-solid ${icon} ${iconColor} text-xl"></i>
                             <div class="flex-1">
-                                ${file.isFolder ? 
-                                    `<button onclick="navigateDriveFolder('${file.id}')" class="text-left font-medium text-slate-900 hover:text-indigo-600">${escapeHtml(file.name)}</button>` :
-                                    `<a href="${file.webViewLink || '#'}" target="_blank" rel="noopener noreferrer" class="font-medium text-slate-900 hover:text-indigo-600">${escapeHtml(file.name)}</a>`
-                                }
+                                <div class="flex items-center gap-2">
+                                    ${file.isFolder ? 
+                                        `<button onclick="navigateDriveFolder('${file.id}')" class="text-left font-medium text-slate-900 hover:text-indigo-600">${escapeHtml(file.name)}</button>` :
+                                        `<a href="${file.webViewLink || '#'}" target="_blank" rel="noopener noreferrer" class="font-medium text-slate-900 hover:text-indigo-600">${escapeHtml(file.name)}</a>`
+                                    }
+                                    ${isIngested ? '<span class="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-medium rounded-full"><i class="fa-solid fa-check-circle mr-1"></i>Ingested</span>' : ''}
+                                </div>
                                 <div class="text-xs text-slate-500 mt-1">
                                     ${file.isFolder ? 'Folder' : `${size} • Modified: ${modified}`}
                                 </div>
@@ -10444,18 +10913,145 @@ Project VANI Team`;
         function updateDriveSyncButton() {
             const btn = document.getElementById('drive-sync-btn');
             const count = document.getElementById('drive-selected-count');
+            const collectionInfo = document.getElementById('drive-collection-info');
+            const collectionSelect = document.getElementById('drive-collection-select');
+            
             if (btn) {
                 btn.disabled = driveSelectedFiles.size === 0;
             }
             if (count) {
                 count.textContent = driveSelectedFiles.size;
             }
+            
+            // Update collection info
+            if (collectionInfo && collectionSelect) {
+                const selectedCollection = collectionSelect.value;
+                if (selectedCollection) {
+                    collectionInfo.textContent = `Files will be synced to: ${selectedCollection}`;
+                    collectionInfo.className = 'text-xs text-indigo-600 font-medium';
+                } else {
+                    collectionInfo.textContent = 'Files will be synced to collection based on folder path';
+                    collectionInfo.className = 'text-xs text-slate-500';
+                }
+            }
         }
 
         function navigateDriveFolder(folderId) {
             driveSelectedFiles.clear();
             updateDriveSyncButton();
+            // Clear search when navigating
+            const searchInput = document.getElementById('drive-search');
+            if (searchInput) {
+                searchInput.value = '';
+                clearDriveSearch();
+            }
             loadDriveFiles(folderId);
+        }
+
+        let driveSearchTimeout = null;
+        let isSearching = false;
+
+        function handleDriveSearchKeyup(event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                if (driveSearchTimeout) {
+                    clearTimeout(driveSearchTimeout);
+                }
+                performDriveSearch();
+            }
+        }
+
+        function handleDriveSearchInput(event) {
+            const searchInput = event.target;
+            const clearBtn = document.getElementById('drive-search-clear');
+            
+            // Show/hide clear button
+            if (searchInput.value.trim()) {
+                if (clearBtn) clearBtn.classList.remove('hidden');
+            } else {
+                if (clearBtn) clearBtn.classList.add('hidden');
+                if (!isSearching) {
+                    // If not currently searching, reload normal view
+                    clearDriveSearch();
+                }
+                return;
+            }
+
+            // Debounce search with short delay for responsive real-time search
+            if (driveSearchTimeout) {
+                clearTimeout(driveSearchTimeout);
+            }
+            
+            driveSearchTimeout = setTimeout(() => {
+                performDriveSearch();
+            }, 200); // Short delay for responsive search while typing
+        }
+
+        async function performDriveSearch() {
+            const searchInput = document.getElementById('drive-search');
+            if (!searchInput) return;
+            
+            const query = searchInput.value.trim();
+            if (!query) {
+                clearDriveSearch();
+                return;
+            }
+
+            isSearching = true;
+            const container = document.getElementById('drive-files-container');
+            if (container) {
+                container.innerHTML = '<div class="text-center text-slate-500 py-8"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>Searching...</p></div>';
+            }
+
+            try {
+                const response = await fetch(`/api/drive/search?q=${encodeURIComponent(query)}`, { 
+                    credentials: 'include' 
+                });
+                const data = await response.json();
+                
+                if (data.success && data.files) {
+                    renderDriveFiles(data.files);
+                    // Update breadcrumb to show search results
+                    const breadcrumb = document.getElementById('drive-breadcrumb');
+                    if (breadcrumb) {
+                        breadcrumb.textContent = ` / Search: "${query}"`;
+                    }
+                } else {
+                    showToast('error', 'Error', data.error || 'Search failed', 3000);
+                    if (container) {
+                        container.innerHTML = '<div class="text-center text-red-500 py-8">Search failed</div>';
+                    }
+                }
+            } catch (error) {
+                console.error('Error searching Drive files:', error);
+                showToast('error', 'Error', 'Search failed: ' + error.message, 5000);
+                if (container) {
+                    container.innerHTML = '<div class="text-center text-red-500 py-8">Error searching files</div>';
+                }
+            } finally {
+                isSearching = false;
+            }
+        }
+
+        function clearDriveSearch() {
+            const searchInput = document.getElementById('drive-search');
+            const clearBtn = document.getElementById('drive-search-clear');
+            
+            if (searchInput) {
+                searchInput.value = '';
+            }
+            if (clearBtn) {
+                clearBtn.classList.add('hidden');
+            }
+            
+            isSearching = false;
+            if (driveSearchTimeout) {
+                clearTimeout(driveSearchTimeout);
+                driveSearchTimeout = null;
+            }
+            
+            // Reload current folder view
+            loadDriveFiles(driveCurrentFolderId || 'root');
         }
 
         async function updateDriveBreadcrumb(folderId) {
@@ -10504,6 +11100,29 @@ Project VANI Team`;
             }
         }
 
+        async function loadDriveCollections() {
+            try {
+                const response = await fetch('/api/knowledge-base/collections', {
+                    credentials: 'include'
+                });
+                const data = await response.json();
+                
+                const select = document.getElementById('drive-collection-select');
+                if (select && data.success && data.collections) {
+                    // Keep the "Auto" option and add collections
+                    select.innerHTML = '<option value="">Auto (from folder path)</option>';
+                    data.collections.forEach(collection => {
+                        const option = document.createElement('option');
+                        option.value = collection;
+                        option.textContent = collection;
+                        select.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading collections:', error);
+            }
+        }
+        
         async function syncSelectedDriveFiles() {
             if (driveSelectedFiles.size === 0) {
                 showToast('warning', 'No Files', 'Please select at least one file to sync', 3000);
@@ -10518,12 +11137,21 @@ Project VANI Team`;
             const resultsDiv = document.getElementById('drive-sync-results');
             const resultsContent = document.getElementById('drive-sync-results-content');
             
+            // Get selected collection (if any)
+            const collectionSelect = document.getElementById('drive-collection-select');
+            const selectedCollection = collectionSelect ? collectionSelect.value : '';
+            
             try {
+                const payload = { fileIds: Array.from(driveSelectedFiles) };
+                if (selectedCollection) {
+                    payload.collection = selectedCollection;
+                }
+                
                 const response = await fetch('/api/drive/sync', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     credentials: 'include',
-                    body: JSON.stringify({ fileIds: Array.from(driveSelectedFiles) })
+                    body: JSON.stringify(payload)
                 });
                 
                 const data = await response.json();
@@ -10544,6 +11172,11 @@ Project VANI Team`;
                                 html += `<div class="p-3 bg-emerald-50 border border-emerald-200 rounded text-sm">
                                     <i class="fa-solid fa-check-circle text-emerald-600 mr-2"></i>
                                     <strong>${escapeHtml(result.name)}</strong>: ${result.chunks} chunks synced to collection "${result.collection}"
+                                </div>`;
+                            } else if (result.skipped) {
+                                html += `<div class="p-3 bg-amber-50 border border-amber-200 rounded text-sm">
+                                    <i class="fa-solid fa-info-circle text-amber-600 mr-2"></i>
+                                    <strong>${escapeHtml(result.name)}</strong>: ${escapeHtml(result.error || 'Already ingested')} - skipped
                                 </div>`;
                             } else {
                                 html += `<div class="p-3 bg-rose-50 border border-rose-200 rounded text-sm">
@@ -10624,32 +11257,52 @@ Project VANI Team`;
         }
         
         async function loadKnowledgeBaseCollections() {
+            const filter = document.getElementById('kb-collection-filter');
+            if (!filter) {
+                console.error('Collection filter element not found');
+                return;
+            }
+            
             try {
                 const response = await fetch('/api/knowledge-base/collections', {
                     credentials: 'include'
                 });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
                 const data = await response.json();
                 
-                if (data.success && data.collections) {
-                    const filter = document.getElementById('kb-collection-filter');
-                    if (filter) {
-                        filter.innerHTML = '<option value="">All Collections</option>';
-                        data.collections.forEach(collection => {
+                if (data.success && data.collections && Array.isArray(data.collections)) {
+                    filter.innerHTML = '<option value="">All Collections</option>';
+                    data.collections.forEach(collection => {
+                        if (collection && typeof collection === 'string') {
                             const option = document.createElement('option');
                             option.value = collection;
                             option.textContent = collection.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
                             filter.appendChild(option);
-                        });
-                    }
+                        }
+                    });
+                    console.log(`Loaded ${data.collections.length} collections into dropdown`);
+                } else {
+                    console.error('Invalid response format:', data);
+                    // Still show default option
+                    filter.innerHTML = '<option value="">All Collections</option>';
+                    showToast('warning', 'Collections', 'Could not load collections, using default', 3000);
                 }
             } catch (error) {
                 console.error('Error loading collections:', error);
+                // Show default option even on error
+                filter.innerHTML = '<option value="">All Collections</option>';
+                showToast('error', 'Error', 'Failed to load collections: ' + error.message, 5000);
             }
         }
         
         async function queryKnowledgeBase() {
             const query = document.getElementById('kb-search-query').value.trim();
-            const collection = document.getElementById('kb-collection-filter').value;
+            const collectionSelect = document.getElementById('kb-collection-filter');
+            const collection = collectionSelect ? collectionSelect.value : '';
             const resultsDiv = document.getElementById('kb-results');
             
             if (!query) {
@@ -10657,18 +11310,28 @@ Project VANI Team`;
                 return;
             }
             
-            resultsDiv.innerHTML = '<div class="text-center text-slate-500 py-8"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>Searching knowledge base...</p></div>';
+            const searchInfo = collection ? `Searching in collection: ${collection}` : 'Searching in ALL collections (including Google Drive collections)...';
+            resultsDiv.innerHTML = `<div class="text-center text-slate-500 py-8"><i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i><p>${searchInfo}</p></div>`;
             
             try {
                 const collections = collection ? [collection] : null;
-                const response = await fetch(`/api/knowledge-base/query?query=${encodeURIComponent(query)}&top_k=10${collections ? '&collections=' + collections.join('&collections=') : ''}`, {
+                const url = `/api/knowledge-base/query?query=${encodeURIComponent(query)}&top_k=10${collections ? '&collections=' + collections.join('&collections=') : ''}`;
+                console.log('Querying knowledge base:', { query, collection: collection || 'ALL', url });
+                
+                const response = await fetch(url, {
                     credentials: 'include'
                 });
                 
                 const data = await response.json();
+                console.log('Knowledge base query response:', data);
                 
                 if (data.success) {
-                    renderKnowledgeBaseResults(data.results, query);
+                    if (data.total_results === 0) {
+                        const allCollectionsMsg = collection ? '' : '<p class="text-xs text-slate-400 mt-2">Note: This search includes all collections from RAG service, including Google Drive collections.</p>';
+                        resultsDiv.innerHTML = `<div class="text-center text-slate-500 py-8"><i class="fa-solid fa-inbox text-3xl mb-2"></i><p>No results found for "${query}"</p>${allCollectionsMsg}</div>`;
+                    } else {
+                        renderKnowledgeBaseResults(data.results, query);
+                    }
                 } else {
                     resultsDiv.innerHTML = `<div class="text-center text-red-500 py-8">Error: ${data.error || 'Failed to query knowledge base'}</div>`;
                 }
@@ -10677,6 +11340,9 @@ Project VANI Team`;
                 resultsDiv.innerHTML = `<div class="text-center text-red-500 py-8">Error: ${error.message}</div>`;
             }
         }
+        
+        // Store full documents for View Full modal
+        window.kbFullDocuments = {};
         
         function renderKnowledgeBaseResults(results, query) {
             const resultsDiv = document.getElementById('kb-results');
@@ -10688,19 +11354,62 @@ Project VANI Team`;
             
             let html = '';
             let resultCount = 0;
+            window.kbFullDocuments = {}; // Reset stored documents
             
             for (const [collection, docs] of Object.entries(results)) {
                 if (!Array.isArray(docs) || docs.length === 0) continue;
                 
-                resultCount += docs.length;
-                const collectionName = collection.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                // STRICT FILTERING: For "Vani" searches, ONLY show project_vani_company_profiles
+                // Check if query contains "vani" (case-insensitive)
+                const queryLower = (query || '').toLowerCase();
+                if (queryLower.includes('vani')) {
+                    // Skip entire collection if it's not project_vani_company_profiles
+                    if (collection !== 'project_vani_company_profiles') {
+                        continue; // Skip this entire collection
+                    }
+                }
                 
                 docs.forEach((doc, idx) => {
-                    const icon = collection === 'services' ? '🛠️' : collection === 'case_studies' ? '📄' : collection === 'platforms' ? '💻' : '📝';
-                    const excerpt = doc.document ? (doc.document.substring(0, 200) + (doc.document.length > 200 ? '...' : '')) : '';
                     const metadata = doc.metadata || {};
+                    
+                    // Use collection from metadata if available, otherwise use the result collection
+                    // This ensures Project Vani content shows under project_vani_company_profiles
+                    const actualCollection = metadata.collection || collection;
+                    
+                    // Additional check: If query is about Vani, ensure the collection matches
+                    if (queryLower.includes('vani')) {
+                        // Only show results from project_vani_company_profiles collection
+                        if (actualCollection !== 'project_vani_company_profiles') {
+                            return; // Skip this result
+                        }
+                    }
+                    
+                    // Filter: If document has a collection in metadata that doesn't match the result collection,
+                    // only show it if it's the correct collection (to avoid showing Project Vani in case_studies)
+                    if (metadata.collection && metadata.collection !== collection) {
+                        // Skip if metadata collection doesn't match the result collection
+                        // This prevents Project Vani from showing in wrong collections
+                        return;
+                    }
+                    
+                    resultCount++;
+                    const collectionName = actualCollection.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                    const icon = actualCollection === 'services' ? '🛠️' : actualCollection === 'case_studies' ? '📄' : actualCollection === 'platforms' ? '💻' : actualCollection.includes('vani') ? '🚀' : '📝';
+                    const excerpt = doc.document ? (doc.document.substring(0, 200) + (doc.document.length > 200 ? '...' : '')) : '';
+                    const fullDocument = doc.document || '';
                     const industry = metadata.industry || 'All';
                     const source = metadata.source || 'Unknown';
+                    const filename = metadata.filename || metadata.source || 'Unknown';
+                    
+                    // Store full document for View Full modal
+                    const docKey = `${actualCollection}_${doc.id || idx}`;
+                    window.kbFullDocuments[docKey] = {
+                        content: fullDocument,
+                        collection: actualCollection,
+                        collectionName: collectionName,
+                        metadata: metadata,
+                        filename: filename
+                    };
                     
                     html += `
                         <div class="border border-slate-200 rounded-lg p-4 hover:bg-slate-50 transition-colors">
@@ -10709,7 +11418,7 @@ Project VANI Team`;
                                     <div class="flex items-center gap-2 mb-1">
                                         <span class="text-xl">${icon}</span>
                                         <span class="font-semibold text-slate-900">${collectionName}</span>
-                                        <span class="px-2 py-1 bg-slate-100 text-slate-600 text-xs rounded">${collection}</span>
+                                        <span class="px-2 py-1 bg-slate-100 text-slate-600 text-xs rounded">${actualCollection}</span>
                                     </div>
                                     <div class="text-sm text-slate-600 mb-2">
                                         Industry: <strong>${industry}</strong> | Source: <strong>${source}</strong>
@@ -10718,10 +11427,10 @@ Project VANI Team`;
                                 </div>
                             </div>
                             <div class="flex gap-2">
-                                <button onclick="viewKnowledgeBaseDocument('${doc.id || idx}', '${collection}')" class="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-xs font-bold">
+                                <button onclick="viewKnowledgeBaseDocument('${docKey}')" class="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-xs font-bold">
                                     <i class="fa-solid fa-eye mr-1"></i>View Full
                                 </button>
-                                <button onclick="useKnowledgeBaseContent(\`${excerpt.replace(/`/g, '\\`')}\`)" class="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-bold">
+                                <button onclick="useKnowledgeBaseContent(\`${fullDocument.replace(/`/g, '\\`').replace(/\$/g, '\\$')}\`)" class="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-bold">
                                     <i class="fa-solid fa-copy mr-1"></i>Use in Message
                                 </button>
                             </div>
@@ -10739,9 +11448,45 @@ Project VANI Team`;
             resultsDiv.innerHTML = html;
         }
         
-        function viewKnowledgeBaseDocument(docId, collection) {
-            // For now, show a simple alert. Can be enhanced with a modal later.
-            showToast('info', 'Document View', 'Full document view coming soon. Document ID: ' + docId, 3000);
+        function viewKnowledgeBaseDocument(docKey) {
+            const doc = window.kbFullDocuments[docKey];
+            if (!doc) {
+                showToast('error', 'Error', 'Document not found', 3000);
+                return;
+            }
+            
+            // Set modal content
+            document.getElementById('kb-doc-modal-title').textContent = doc.collectionName;
+            document.getElementById('kb-doc-modal-collection').textContent = doc.collection;
+            document.getElementById('kb-doc-modal-filename').textContent = doc.filename;
+            document.getElementById('kb-doc-modal-content').textContent = doc.content;
+            
+            // Set metadata
+            const metadataHtml = `
+                <div class="text-sm text-slate-600 space-y-1">
+                    ${doc.metadata.industry ? `<div><strong>Industry:</strong> ${doc.metadata.industry}</div>` : ''}
+                    ${doc.metadata.source ? `<div><strong>Source:</strong> ${doc.metadata.source}</div>` : ''}
+                    ${doc.metadata.filename ? `<div><strong>File:</strong> ${doc.metadata.filename}</div>` : ''}
+                </div>
+            `;
+            document.getElementById('kb-doc-modal-metadata').innerHTML = metadataHtml;
+            
+            // Store current doc key for copy function
+            window.currentKBDocKey = docKey;
+            
+            // Show modal
+            document.getElementById('kb-document-modal').classList.remove('hidden');
+        }
+        
+        function closeKBDocumentModal() {
+            document.getElementById('kb-document-modal').classList.add('hidden');
+            window.currentKBDocKey = null;
+        }
+        
+        function copyKBDocumentContent() {
+            if (window.currentKBDocKey && window.kbFullDocuments[window.currentKBDocKey]) {
+                useKnowledgeBaseContent(window.kbFullDocuments[window.currentKBDocKey].content);
+            }
         }
         
         function useKnowledgeBaseContent(content) {
@@ -12304,14 +13049,47 @@ Project VANI Team`;
             <div class="p-6">
                 <!-- Email-specific fields -->
                 <div id="pitch-send-preview-email-fields" class="hidden space-y-4 mb-4">
-                    <div>
-                        <label class="block text-sm font-medium text-slate-700 mb-2">From</label>
-                        <input type="text" id="pitch-send-preview-from" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500" placeholder="Project VANI Team">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-2">To</label>
+                            <div class="px-3 py-2 border border-slate-300 rounded-lg bg-slate-50 text-slate-700">
+                                <div id="pitch-send-preview-to-name" class="font-medium"></div>
+                                <input type="email" id="pitch-send-preview-to-email-input" class="w-full mt-1 px-2 py-1 border border-slate-300 rounded text-xs focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500" placeholder="Enter email address">
+                                <div id="pitch-send-preview-to-email-display" class="text-xs text-slate-500 mt-1"></div>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 mb-2">From</label>
+                            <input type="text" id="pitch-send-preview-from" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500" placeholder="Project VANI Team">
+                            <div id="pitch-send-preview-from-email" class="text-xs text-slate-500 mt-1"></div>
+                        </div>
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-slate-700 mb-2">Subject</label>
                         <input type="text" id="pitch-send-preview-subject" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
                     </div>
+                    <button onclick="saveTargetContactInfo()" id="btn-save-email-info" class="w-full px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium text-sm">
+                        <i class="fa-solid fa-save mr-2"></i>Save Email Address
+                    </button>
+                </div>
+                
+                <!-- WhatsApp/LinkedIn recipient info -->
+                <div id="pitch-send-preview-contact-info" class="hidden mb-4 p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
+                    <div class="text-sm">
+                        <span class="font-medium text-slate-700">To: </span>
+                        <span id="pitch-send-preview-contact-name" class="text-slate-900"></span>
+                    </div>
+                    <div id="pitch-send-preview-phone-section" class="hidden">
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Phone</label>
+                        <input type="tel" id="pitch-send-preview-phone-input" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500" placeholder="Enter phone number">
+                    </div>
+                    <div id="pitch-send-preview-linkedin-section" class="hidden">
+                        <label class="block text-sm font-medium text-slate-700 mb-1">LinkedIn URL</label>
+                        <input type="url" id="pitch-send-preview-linkedin-input" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500" placeholder="Enter LinkedIn profile URL">
+                    </div>
+                    <button onclick="saveTargetContactInfo()" id="btn-save-contact-info" class="w-full px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium text-sm">
+                        <i class="fa-solid fa-save mr-2"></i>Save Contact Information
+                    </button>
                 </div>
                 
                 <!-- Message Content (editable) -->
@@ -12327,6 +13105,12 @@ Project VANI Team`;
                     </div>
                     <textarea id="pitch-send-preview-message" rows="12" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 font-mono text-sm" placeholder="Enter your message..."></textarea>
                     <div id="pitch-send-preview-rendered" class="hidden w-full px-3 py-2 border border-slate-300 rounded-lg bg-slate-50 prose max-w-none text-slate-900"></div>
+                </div>
+                
+                <!-- Signature Preview (moved below message) -->
+                <div id="pitch-send-preview-signature-section" class="mb-4 p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                    <label class="block text-sm font-medium text-slate-700 mb-2">Default Signature:</label>
+                    <div id="pitch-send-preview-signature-preview" class="text-sm text-slate-600 prose max-w-none"></div>
                 </div>
                 
                 <div class="flex gap-3 pt-4 border-t border-slate-200">

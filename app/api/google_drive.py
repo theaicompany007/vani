@@ -23,6 +23,112 @@ SUPPORTED_MIME_TYPES = {
 }
 
 
+def check_file_ingested(filename: str, rag_service_url: str, rag_api_key: str) -> bool:
+    """
+    Check if a file is already ingested in the RAG service by querying with the filename.
+    Returns True if the file exists with source='google_drive' metadata.
+    """
+    if not rag_api_key:
+        return False
+    
+    try:
+        headers = {
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {rag_api_key}',
+            'x-api-key': rag_api_key
+        }
+        
+        # Query with filename to find matching documents
+        # We'll search across all collections that might contain Google Drive files
+        # The query will look for the filename in the content/metadata
+        payload = {
+            'query': filename,
+            'top_k': 10  # Get a few results to check metadata
+        }
+        
+        # Try querying - we'll check multiple potential collections
+        # Since we don't know the exact collection, we'll query a common one or all
+        # For now, let's try querying without specifying collections to search all
+        response = requests.post(
+            f"{rag_service_url}/rag/query",
+            json=payload,
+            headers=headers,
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            # Check all results to see if any have matching metadata
+            for collection_name, results in data.get('results', {}).items():
+                for result in results:
+                    metadata = result.get('metadata', {})
+                    if (metadata.get('source') == 'google_drive' and 
+                        metadata.get('filename') == filename):
+                        return True
+        
+        return False
+    except Exception as e:
+        logger.debug(f"Error checking if file is ingested: {e}")
+        return False  # On error, assume not ingested to allow retry
+
+
+def check_files_ingested_batch(filenames: List[str], rag_service_url: str, rag_api_key: str) -> Dict[str, bool]:
+    """
+    Check multiple files at once to see which are already ingested.
+    Returns a dict mapping filename -> is_ingested boolean.
+    """
+    ingested_map = {}
+    
+    if not rag_api_key:
+        return {fname: False for fname in filenames}
+    
+    try:
+        headers = {
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {rag_api_key}',
+            'x-api-key': rag_api_key
+        }
+        
+        # Query for all filenames at once by creating a combined query
+        # We'll search for any of the filenames
+        query_terms = ' OR '.join(filenames[:10])  # Limit to avoid query too long
+        payload = {
+            'query': query_terms,
+            'top_k': 50  # Get more results to check
+        }
+        
+        response = requests.post(
+            f"{rag_service_url}/rag/query",
+            json=payload,
+            headers=headers,
+            timeout=15
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            # Build a set of ingested filenames
+            ingested_filenames = set()
+            for collection_name, results in data.get('results', {}).items():
+                for result in results:
+                    metadata = result.get('metadata', {})
+                    if (metadata.get('source') == 'google_drive' and 
+                        metadata.get('filename')):
+                        ingested_filenames.add(metadata.get('filename'))
+            
+            # Map each filename to whether it's ingested
+            for filename in filenames:
+                ingested_map[filename] = filename in ingested_filenames
+        else:
+            # On error, assume none are ingested
+            ingested_map = {fname: False for fname in filenames}
+            
+    except Exception as e:
+        logger.debug(f"Error batch checking ingested files: {e}")
+        ingested_map = {fname: False for fname in filenames}
+    
+    return ingested_map
+
+
 def get_google_drive_service():
     """Get authenticated Google Drive service"""
     try:
@@ -70,12 +176,25 @@ def list_drive_files():
         drive_service = get_google_drive_service()
         
         # Build query
-        query = f"'{folder_id}' in parents and trashed=false"
-        if mime_type:
-            query += f" and mimeType='{mime_type}'"
+        if folder_id == 'root':
+            # When listing root, include files/folders in root AND shared folders
+            # Structure: (root items with mimeType filter) OR (shared folders) AND not trashed
+            if mime_type:
+                mime_filter = f"mimeType='{mime_type}'"
+            else:
+                # Filter for supported file types or folders
+                mime_filter = "(mimeType='application/vnd.google-apps.folder' or mimeType='application/pdf' or mimeType='application/vnd.openxmlformats-officedocument.wordprocessingml.document' or mimeType='text/plain' or mimeType='text/markdown')"
+            
+            # Root items must match mimeType filter, shared folders are always folders
+            # Explicit parentheses: ((root items) OR (shared folders)) AND not trashed
+            query = f"(('root' in parents and {mime_filter}) or (sharedWithMe=true and mimeType='application/vnd.google-apps.folder')) and trashed=false"
         else:
-            # Filter for supported file types or folders
-            query += " and (mimeType='application/vnd.google-apps.folder' or mimeType='application/pdf' or mimeType='application/vnd.openxmlformats-officedocument.wordprocessingml.document' or mimeType='text/plain' or mimeType='text/markdown')"
+            query = f"'{folder_id}' in parents and trashed=false"
+            if mime_type:
+                query += f" and mimeType='{mime_type}'"
+            else:
+                # Filter for supported file types or folders
+                query += " and (mimeType='application/vnd.google-apps.folder' or mimeType='application/pdf' or mimeType='application/vnd.openxmlformats-officedocument.wordprocessingml.document' or mimeType='text/plain' or mimeType='text/markdown')"
         
         results = drive_service.files().list(
             q=query,
@@ -84,21 +203,106 @@ def list_drive_files():
             pageSize=1000
         ).execute()
         
+        # Get RAG service config for checking ingested files
+        rag_service_url = os.getenv('RAG_SERVICE_URL', 'https://rag.theaicompany.co')
+        rag_api_key = os.getenv('RAG_API_KEY')
+        
+        # Collect non-folder filenames to check
+        file_list = results.get('files', [])
+        filenames_to_check = [
+            file.get('name') for file in file_list 
+            if file.get('mimeType') != 'application/vnd.google-apps.folder'
+        ]
+        
+        # Batch check which files are already ingested
+        ingested_map = {}
+        if filenames_to_check and rag_api_key:
+            ingested_map = check_files_ingested_batch(filenames_to_check, rag_service_url, rag_api_key)
+        
         files = []
-        for file in results.get('files', []):
+        for file in file_list:
+            file_name = file.get('name', 'Unknown')
+            is_folder = file.get('mimeType') == 'application/vnd.google-apps.folder'
+            is_ingested = ingested_map.get(file_name, False) if not is_folder else False
+            
             files.append({
                 'id': file.get('id'),
-                'name': file.get('name', 'Unknown'),
+                'name': file_name,
                 'mimeType': file.get('mimeType', ''),
                 'size': int(file.get('size', 0)) if file.get('size') else None,
                 'modifiedTime': file.get('modifiedTime'),
-                'isFolder': file.get('mimeType') == 'application/vnd.google-apps.folder',
+                'isFolder': is_folder,
                 'webViewLink': file.get('webViewLink'),
+                'isIngested': is_ingested,
             })
         
         return jsonify({'success': True, 'files': files})
     except Exception as e:
         logger.error(f"Error listing Drive files: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@google_drive_bp.route('/api/drive/search', methods=['GET'])
+@require_auth
+@require_super_user
+def search_drive_files():
+    """Search files and folders in Google Drive"""
+    try:
+        search_query = request.args.get('q', '').strip()
+        if not search_query:
+            return jsonify({'success': False, 'error': 'Search query is required'}), 400
+        
+        drive_service = get_google_drive_service()
+        
+        # Build search query - search in name and include supported file types or folders
+        # Escape single quotes in search query
+        escaped_query = search_query.replace("'", "\\'")
+        query = f"name contains '{escaped_query}' and trashed=false and (mimeType='application/vnd.google-apps.folder' or mimeType='application/pdf' or mimeType='application/vnd.openxmlformats-officedocument.wordprocessingml.document' or mimeType='text/plain' or mimeType='text/markdown')"
+        
+        results = drive_service.files().list(
+            q=query,
+            fields='files(id, name, mimeType, size, modifiedTime, webViewLink, parents)',
+            orderBy='folder,name',
+            pageSize=1000
+        ).execute()
+        
+        # Get RAG service config for checking ingested files
+        rag_service_url = os.getenv('RAG_SERVICE_URL', 'https://rag.theaicompany.co')
+        rag_api_key = os.getenv('RAG_API_KEY')
+        
+        # Collect non-folder filenames to check
+        file_list = results.get('files', [])
+        filenames_to_check = [
+            file.get('name') for file in file_list 
+            if file.get('mimeType') != 'application/vnd.google-apps.folder'
+        ]
+        
+        # Batch check which files are already ingested
+        ingested_map = {}
+        if filenames_to_check and rag_api_key:
+            ingested_map = check_files_ingested_batch(filenames_to_check, rag_service_url, rag_api_key)
+        
+        files = []
+        for file in file_list:
+            file_name = file.get('name', 'Unknown')
+            is_folder = file.get('mimeType') == 'application/vnd.google-apps.folder'
+            is_ingested = ingested_map.get(file_name, False) if not is_folder else False
+            
+            files.append({
+                'id': file.get('id'),
+                'name': file_name,
+                'mimeType': file.get('mimeType', ''),
+                'size': int(file.get('size', 0)) if file.get('size') else None,
+                'modifiedTime': file.get('modifiedTime'),
+                'isFolder': is_folder,
+                'webViewLink': file.get('webViewLink'),
+                'parents': file.get('parents', []),
+                'isIngested': is_ingested,
+            })
+        
+        return jsonify({'success': True, 'files': files, 'query': search_query})
+    except Exception as e:
+        logger.error(f"Error searching Drive files: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -139,6 +343,7 @@ def sync_drive_files():
     try:
         data = request.get_json()
         file_ids = data.get('fileIds', [])
+        specified_collection = data.get('collection')  # Optional: user-specified collection
         
         if not file_ids or not isinstance(file_ids, list):
             return jsonify({'success': False, 'error': 'fileIds array is required'}), 400
@@ -213,6 +418,19 @@ def sync_drive_files():
                 if mime_type == 'application/vnd.google-apps.folder':
                     continue
                 
+                # Check if file is already ingested
+                if check_file_ingested(file_name, rag_service_url, rag_api_key):
+                    results.append({
+                        'id': file_id,
+                        'name': file_name,
+                        'success': False,
+                        'chunks': 0,
+                        'collection': '',
+                        'error': 'File already ingested',
+                        'skipped': True,
+                    })
+                    continue
+                
                 # Skip unsupported file types
                 if mime_type not in SUPPORTED_MIME_TYPES:
                     results.append({
@@ -227,7 +445,11 @@ def sync_drive_files():
                 
                 # Get folder path for collection naming
                 folder_path = get_folder_path(parent_id)
-                collection = get_collection_name(folder_path, 'company_profiles')
+                # Use specified collection if provided, otherwise generate from folder path
+                if specified_collection:
+                    collection = specified_collection
+                else:
+                    collection = get_collection_name(folder_path, 'company_profiles')
                 collections.add(collection)
                 
                 # Download file
@@ -242,16 +464,16 @@ def sync_drive_files():
                     
                     if mime_type == 'application/vnd.google-apps.document':
                         # Export Google Docs as DOCX
-                        request = drive_service.files().export_media(
+                        media_request = drive_service.files().export_media(
                             fileId=file_id,
                             mimeType='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
                         )
                     else:
                         # Download regular files
-                        request = drive_service.files().get_media(fileId=file_id)
+                        media_request = drive_service.files().get_media(fileId=file_id)
                     
                     # Download file content
-                    downloader = MediaIoBaseDownload(file_handle, request)
+                    downloader = MediaIoBaseDownload(file_handle, media_request)
                     done = False
                     while not done:
                         status, done = downloader.next_chunk()
@@ -312,14 +534,15 @@ def sync_drive_files():
                             })
                         
                         # Upload to RAG service
+                        # Collection must be sent as query parameter, not in body
                         payload = {
-                            'collection': collection,
                             'documents': documents,
                             'metadatas': metadatas
                         }
                         
                         rag_response = requests.post(
                             f"{rag_service_url}/rag/add",
+                            params={'collection': collection},
                             json=payload,
                             headers=rag_headers,
                             timeout=60

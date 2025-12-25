@@ -160,8 +160,11 @@ def check_environment():
         if not value:
             missing.append(f"  [X] {var} - {desc}")
         else:
+            # Mask sensitive values: show first 4 + last 4 chars, or ********** if too short
+            masked = value if len(value) <= 8 else f"{value[:4]}...{value[-4:]}"
+            print(f"  [OK] {var:25} = {masked}")
             # Show full value instead of masking
-            print(f"  [OK] {var:25} = {value}")
+            # print(f"  [OK] {var:25} = {value}")
     
     # Check optional variables
     missing_optional = []
@@ -170,8 +173,11 @@ def check_environment():
         if not value:
             missing_optional.append(f"  [!] {var:25} - {desc} (optional)")
         else:
+            # Mask sensitive values: show first 4 + last 4 chars, or ********** if too short
+            masked = value if len(value) <= 8 else f"{value[:4]}...{value[-4:]}"
+            print(f"  [OK] {var:25} = {masked}")
             # Show full value instead of masking
-            print(f"  [OK] {var:25} = {value}")
+            # print(f"  [OK] {var:25} = {value}")
     
     # Check optional Twilio variables
     for var, desc in optional_twilio.items():
@@ -183,8 +189,12 @@ def check_environment():
             elif var != 'TWILIO_SANDBOX_WHATSAPP_NUMBER':
                 missing_optional.append(f"  [!] {var:25} - {desc} (optional)")
         else:
-            print(f"  [OK] {var:25} = {value}")
-    
+             # Mask sensitive values: show first 4 + last 4 chars, or ********** if too short
+            masked = value if len(value) <= 8 else f"{value[:4]}...{value[-4:]}"
+            print(f"  [OK] {var:25} = {masked}")
+            # Show full value instead of masking
+            # print(f"  [OK] {var:25} = {value}")
+
     if missing:
         print("\n[X] Missing required environment variables:")
         for item in missing:

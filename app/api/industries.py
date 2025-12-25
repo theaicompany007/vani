@@ -23,6 +23,8 @@ def list_industries():
     try:
         # Check if 'all' parameter is requested (for admin purposes only)
         show_all = request.args.get('all', 'false').lower() == 'true'
+        # Check if 'with_targets' parameter is requested (for pitch/targets tabs)
+        with_targets_only = request.args.get('with_targets', 'false').lower() == 'true'
         is_super_user = getattr(user, 'is_super_user', False)
         
         # Only show all industries if explicitly requested AND user is super user
@@ -56,7 +58,46 @@ def list_industries():
         
         # Get industry details for assigned industries
         response = supabase.table('industries').select('*').in_('id', assigned_industry_ids).order('name', desc=False).execute()
-        return jsonify({'success': True, 'industries': response.data})
+        
+        # If with_targets_only is requested, filter to only industries that have targets
+        if with_targets_only:
+            try:
+                # Get distinct industry_ids from targets table
+                targets_response = supabase_db.table('targets').select('industry_id').not_.is_('industry_id', 'null').execute()
+                industry_ids_with_targets = set()
+                if targets_response.data:
+                    for target in targets_response.data:
+                        if target.get('industry_id'):
+                            industry_ids_with_targets.add(str(target['industry_id']))
+                
+                # Filter industries to only those with targets
+                filtered_industries = [ind for ind in response.data if str(ind.get('id')) in industry_ids_with_targets]
+                response.data = filtered_industries
+                logger.debug(f"Filtered to {len(filtered_industries)} industries with targets")
+            except Exception as e:
+                logger.warning(f"Could not filter industries by targets: {e}")
+        
+        # Get user_industries data to include is_default flag
+        industries_with_default = []
+        try:
+            user_industries_response = supabase_db.table('user_industries').select('industry_id, is_default').eq('user_id', user.id).execute()
+            # Create a map of industry_id -> is_default
+            default_map = {}
+            if user_industries_response.data:
+                for ui in user_industries_response.data:
+                    default_map[str(ui['industry_id'])] = ui.get('is_default', False)
+            
+            # Add is_default flag to each industry
+            for industry in response.data:
+                industry_id = str(industry.get('id'))
+                industry['is_default'] = default_map.get(industry_id, False)
+                industries_with_default.append(industry)
+        except Exception as e:
+            # If user_industries table doesn't exist or query fails, just return industries without is_default
+            logger.warning(f"Could not fetch is_default flags: {e}")
+            industries_with_default = response.data
+        
+        return jsonify({'success': True, 'industries': industries_with_default})
             
     except Exception as e:
         logger.error(f"Error listing industries: {e}")

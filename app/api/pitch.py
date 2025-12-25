@@ -291,13 +291,70 @@ def preview_pitch(pitch_id):
         sent_at = generated_pitch.get('sent_at')
         sent_channel = generated_pitch.get('sent_channel')
         
+        # Get target information for preview
+        target_id = generated_pitch.get('target_id')
+        target_data = None
+        if target_id:
+            try:
+                target_response = supabase.table('targets').select('*').eq('id', target_id).limit(1).execute()
+                if target_response.data:
+                    target = target_response.data[0]
+                    # If target is linked to contact, get contact info
+                    contact_id = target.get('contact_id')
+                    if contact_id:
+                        contact_response = supabase.table('contacts').select('*').eq('id', contact_id).limit(1).execute()
+                        if contact_response.data:
+                            contact = contact_response.data[0]
+                            target['email'] = contact.get('email') or target.get('email')
+                            target['contact_name'] = contact.get('name') or target.get('contact_name')
+                            target['phone'] = contact.get('phone') or target.get('phone')
+                            target['linkedin_url'] = contact.get('linkedin') or target.get('linkedin_url')
+                    # Include target ID for saving updates (use target_id from pitch as fallback)
+                    target_id_value = target.get('id') or target_id
+                    target_data = {
+                        'id': str(target_id_value) if target_id_value else None,  # Include target ID for saving updates
+                        'email': target.get('email'),
+                        'contact_name': target.get('contact_name'),
+                        'company_name': target.get('company_name'),
+                        'phone': target.get('phone'),
+                        'linkedin_url': target.get('linkedin_url')
+                    }
+            except Exception as e:
+                logger.warning(f"Could not fetch target data for preview: {e}")
+        
+        # Get signature profile for preview
+        signature_data = None
+        try:
+            sig_response = supabase.table('signature_profiles').select('*').eq('is_default', True).limit(1).execute()
+            if sig_response.data:
+                signature = sig_response.data[0]
+                signature_data = {
+                    'from_name': signature.get('from_name', 'Project VANI Team'),
+                    'from_email': signature.get('from_email'),
+                    'signature_text': SignatureFormatter.format_for_channel(signature, 'email')
+                }
+            else:
+                # Fallback to first available signature
+                sig_response = supabase.table('signature_profiles').select('*').limit(1).execute()
+                if sig_response.data:
+                    signature = sig_response.data[0]
+                    signature_data = {
+                        'from_name': signature.get('from_name', 'Project VANI Team'),
+                        'from_email': signature.get('from_email'),
+                        'signature_text': SignatureFormatter.format_for_channel(signature, 'email')
+                    }
+        except Exception as e:
+            logger.warning(f"Could not fetch signature for preview: {e}")
+        
         return jsonify({
             'success': True,
             'pitch_id': pitch_id_str,
             'generated_content': generated_content,
             'generated_html': generated_pitch.get('html_content'),
             'sent_at': sent_at,
-            'sent_channel': sent_channel
+            'sent_channel': sent_channel,
+            'target': target_data,
+            'signature': signature_data
         })
     except Exception as e:
         logger.error(f"Error retrieving pitch preview {pitch_id}: {e}")
@@ -400,9 +457,10 @@ def send_pitch(pitch_id):
             from_name = edited_from or (signature.get('from_name') if signature else 'Project VANI Team')
             from_email = signature.get('from_email') if signature else None
             
-            to_email = target.get('email')
+            # Use email from request if provided (user updated it), otherwise use target email
+            to_email = data.get('to_email') or target.get('email')
             if not to_email:
-                return jsonify({'error': 'Target email not available'}), 400
+                return jsonify({'error': 'Target email not available. Please enter an email address.'}), 400
             
             # Use edited message or convert generated HTML to plain text
             if edited_message:

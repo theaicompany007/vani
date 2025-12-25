@@ -127,7 +127,128 @@ def query_knowledge_base():
         if not query:
             return jsonify({'error': 'Query parameter is required', 'success': False}), 400
         
+        # If no collections specified (i.e., "All Collections" selected), fetch ALL collections from RAG service
+        # This ensures Google Drive collections are included in the search
+        if not collections:
+            rag_service_url = os.getenv('RAG_SERVICE_URL', 'https://rag.theaicompany.co')
+            rag_api_key = os.getenv('RAG_API_KEY')
+            
+            if rag_api_key:
+                try:
+                    headers = {
+                        'Content-Type': 'application/json',
+                        'Authorization': f'Bearer {rag_api_key}',
+                        'x-api-key': rag_api_key
+                    }
+                    # Try multiple endpoints to get ALL collections
+                    endpoints_to_try = [
+                        f"{rag_service_url}/rag/collections",
+                        f"{rag_service_url}/collections",
+                        f"{rag_service_url}/api/collections"
+                    ]
+                    
+                    for endpoint in endpoints_to_try:
+                        try:
+                            response = requests.get(endpoint, headers=headers, timeout=10)
+                            if response.status_code == 200:
+                                data = response.json()
+                                # Handle different response formats
+                                all_collections = []
+                                if isinstance(data, list):
+                                    all_collections = data
+                                elif isinstance(data, dict):
+                                    # Handle different dict response formats
+                                    logger.debug(f"Processing dict response with {len(data)} keys")
+                                    logger.debug(f"Sample data: {list(data.items())[:2] if data else 'empty'}")
+                                    
+                                    if data:
+                                        # Check if there's a 'collections' key with nested dict structure
+                                        # Format: {'collections': {'case_studies': {'count': 5}, ...}, 'total_collections': 12}
+                                        if 'collections' in data and isinstance(data['collections'], dict):
+                                            collections_dict = data['collections']
+                                            # Check if the nested dict has values that are dicts (with 'count' keys)
+                                            first_nested_value = next(iter(collections_dict.values())) if collections_dict else None
+                                            if first_nested_value and isinstance(first_nested_value, dict):
+                                                # Extract collection names from the nested dict keys
+                                                all_collections = list(collections_dict.keys())
+                                                logger.info(f"✓ Extracted {len(all_collections)} collection names from nested 'collections' dict")
+                                                logger.debug(f"Collections list: {all_collections}")
+                                            else:
+                                                # The 'collections' value might be a list
+                                                all_collections = collections_dict if isinstance(collections_dict, list) else []
+                                        else:
+                                            # Check if top-level values are dicts (format: {'case_studies': {'count': 5}})
+                                            try:
+                                                first_value = next(iter(data.values()))
+                                                logger.debug(f"First value type: {type(first_value)}, value: {str(first_value)[:200]}")
+                                                
+                                                if isinstance(first_value, dict):
+                                                    # Check if nested value is also a dict (indicating {'collection': {'count': N}})
+                                                    first_nested = next(iter(first_value.values())) if first_value else None
+                                                    if first_nested and isinstance(first_nested, dict):
+                                                        # This is the nested format, extract from top-level keys
+                                                        all_collections = list(data.keys())
+                                                        logger.info(f"✓ Extracted {len(all_collections)} collection names from top-level dict")
+                                                    else:
+                                                        # Top-level dict with simple values, extract keys
+                                                        all_collections = list(data.keys())
+                                                        logger.info(f"✓ Extracted {len(all_collections)} collection names from dict keys")
+                                                    logger.debug(f"Collections list: {all_collections}")
+                                                else:
+                                                    # Try common keys for list of collections
+                                                    all_collections = data.get('collections') or data.get('data') or data.get('result') or data.get('items') or []
+                                                    if isinstance(all_collections, list):
+                                                        logger.debug(f"Found collections list in common key: {len(all_collections)} items")
+                                                    else:
+                                                        logger.debug(f"Tried common keys, got: {type(all_collections)}")
+                                            except StopIteration:
+                                                logger.warning("Dict has no values")
+                                                all_collections = []
+                                            except Exception as e:
+                                                logger.error(f"Error processing dict: {e}")
+                                                all_collections = []
+                                    else:
+                                        all_collections = []
+                                else:
+                                    all_collections = []
+                                
+                                # Ensure we have a list, not a dict
+                                if all_collections:
+                                    if isinstance(all_collections, list):
+                                        collections = all_collections
+                                    elif isinstance(all_collections, dict):
+                                        # If somehow still a dict, extract keys
+                                        collections = list(all_collections.keys())
+                                        logger.warning(f"Collections was still a dict, extracted keys: {collections}")
+                                    else:
+                                        logger.warning(f"Unexpected collections type: {type(all_collections)}")
+                                        continue
+                                    
+                                    logger.info(f"Fetched {len(collections)} collections from RAG service for 'All Collections' query: {collections}")
+                                    break
+                                else:
+                                    logger.warning(f"Failed to extract collections. Got: {type(all_collections)} - {all_collections}")
+                        except Exception as e:
+                            logger.debug(f"Failed to fetch collections from {endpoint}: {e}")
+                            continue
+                    
+                    if not collections:
+                        logger.warning("Could not fetch collections from RAG service, will let RAG client handle it")
+                except Exception as e:
+                    logger.warning(f"Error fetching all collections: {e}, will let RAG client handle it")
+        
+        # Final safety check: ensure collections is a list, not a dict
+        if collections and isinstance(collections, dict):
+            logger.warning(f"Collections is still a dict! Converting to list. Dict: {collections}")
+            collections = list(collections.keys())
+            logger.info(f"Converted to list: {collections}")
+        elif collections and not isinstance(collections, list):
+            logger.warning(f"Collections is not a list! Type: {type(collections)}, Value: {collections}")
+            collections = None  # Let RAG client handle it
+        
         rag_client = get_rag_client()
+        # Pass None to let RAG client fetch all collections if we couldn't fetch them here
+        logger.debug(f"Calling RAG client with collections (type: {type(collections)}): {collections}")
         result = rag_client.query(query, collections=collections, top_k=top_k)
         
         return jsonify({
@@ -162,23 +283,76 @@ def list_collections():
         }
         
         # Try to get collections from RAG service
-        try:
-            response = requests.get(
-                f"{rag_service_url}/rag/collections",
-                headers=headers,
-                timeout=10
-            )
-            if response.status_code == 200:
-                data = response.json()
-                collections = data.get('collections', [])
-                return jsonify({'success': True, 'collections': collections})
-        except Exception as e:
-            logger.warning(f"Could not fetch collections from RAG service: {e}")
+        # Try multiple possible endpoints
+        endpoints_to_try = [
+            f"{rag_service_url}/rag/collections",
+            f"{rag_service_url}/collections",
+            f"{rag_service_url}/api/collections"
+        ]
+        
+        for endpoint in endpoints_to_try:
+            try:
+                logger.info(f"Trying to fetch collections from {endpoint}")
+                response = requests.get(
+                    endpoint,
+                    headers=headers,
+                    timeout=10
+                )
+                
+                logger.info(f"RAG service response status from {endpoint}: {response.status_code}")
+                
+                if response.status_code == 200:
+                    try:
+                        data = response.json()
+                        logger.info(f"RAG service response data: {data}")
+                        
+                        # Try different possible response formats
+                        collections = None
+                        if isinstance(data, list):
+                            # Response is directly a list
+                            collections = data
+                        elif isinstance(data, dict):
+                            # Check if it's a dict of collections with counts (like {'case_studies': {'count': 5}})
+                            if all(isinstance(v, dict) for v in data.values()):
+                                # Extract collection names from dict keys
+                                collections = list(data.keys())
+                            else:
+                                # Try common keys for list of collections
+                                collections = (data.get('collections') or 
+                                            data.get('data') or 
+                                            data.get('result') or
+                                            data.get('items'))
+                        
+                        if collections and isinstance(collections, list) and len(collections) > 0:
+                            logger.info(f"Successfully fetched {len(collections)} collections from RAG service: {collections}")
+                            return jsonify({'success': True, 'collections': collections})
+                        else:
+                            logger.warning(f"RAG service returned empty or invalid collections from {endpoint}. Response: {data}, Extracted: {collections}")
+                    except ValueError as json_error:
+                        logger.error(f"Failed to parse JSON response from {endpoint}: {json_error}. Response text: {response.text[:500]}")
+                elif response.status_code == 404:
+                    # Endpoint doesn't exist, try next one
+                    logger.debug(f"Endpoint {endpoint} returned 404, trying next endpoint")
+                    continue
+                else:
+                    error_text = response.text[:500] if response.text else "No response body"
+                    logger.warning(f"RAG service returned status {response.status_code} from {endpoint}: {error_text}")
+            except requests.exceptions.Timeout:
+                logger.warning(f"Timeout fetching collections from {endpoint}")
+                continue
+            except requests.exceptions.RequestException as e:
+                logger.warning(f"Request error fetching collections from {endpoint}: {e}")
+                continue
+            except Exception as e:
+                logger.error(f"Unexpected error fetching collections from {endpoint}: {e}", exc_info=True)
+                continue
         
         # Fallback to default collections
+        default_collections = ['case_studies', 'services', 'company_profiles', 'industry_insights', 'faqs', 'platforms']
+        logger.info(f"Using fallback collections: {default_collections}")
         return jsonify({
             'success': True,
-            'collections': ['case_studies', 'services', 'company_profiles', 'industry_insights', 'faqs', 'platforms']
+            'collections': default_collections
         })
     except Exception as e:
         logger.error(f"Error listing collections: {e}")

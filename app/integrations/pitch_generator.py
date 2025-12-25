@@ -147,6 +147,9 @@ class PitchGenerator:
         - The title should include "{vani_persona} for [Company Name]" format
         - The hit_list should be formatted as readable, engaging text (like a marketing card description), NOT as a JSON object. Use natural language.
         - The solution should emphasize how the {vani_persona} persona specifically addresses {company_name}'s challenges.
+        - DO NOT mention "RAG" or "Gemini" as brand names or customer collaborations. These are internal tools, not customer brands.
+        - DO NOT reference "successful collaborations with brands such as RAG and Gemini" or similar phrases.
+        - Focus on real customer success stories and industry examples, not internal tools or technologies.
         
         Return your response as a JSON object with these exact keys: title, problem, solution, hit_list, trojan_horse.
         """

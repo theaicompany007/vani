@@ -47,8 +47,96 @@ class RAGClient:
                 'total_results': 0
             }
         
+        # If no collections specified, fetch all available collections from RAG service
         if not collections:
-            collections = ['case_studies', 'services', 'company_profiles', 'industry_insights']
+            try:
+                headers = {
+                    'Content-Type': 'application/json',
+                    'Authorization': f'Bearer {self.api_key}',
+                    'x-api-key': self.api_key
+                }
+                # Try multiple endpoints to get collections
+                collection_endpoints = [
+                    f"{self.service_url}/rag/collections",
+                    f"{self.service_url}/collections",
+                    f"{self.service_url}/api/collections"
+                ]
+                
+                for endpoint in collection_endpoints:
+                    try:
+                        response = requests.get(endpoint, headers=headers, timeout=10)
+                        if response.status_code == 200:
+                            data = response.json()
+                            logger.debug(f"Raw collections response from RAG service: {type(data)} - {data}")
+                            
+                            # Handle different response formats
+                            fetched_collections = []
+                            if isinstance(data, list):
+                                fetched_collections = data
+                                logger.debug("Collections response is a list")
+                            elif isinstance(data, dict):
+                                # Handle different dict response formats
+                                # Check if there's a 'collections' key with nested dict structure
+                                # Format: {'collections': {'case_studies': {'count': 5}, ...}, 'total_collections': 12}
+                                if 'collections' in data and isinstance(data['collections'], dict):
+                                    collections_dict = data['collections']
+                                    # Check if the nested dict has values that are dicts (with 'count' keys)
+                                    first_nested_value = next(iter(collections_dict.values())) if collections_dict else None
+                                    if first_nested_value and isinstance(first_nested_value, dict):
+                                        # Extract collection names from the nested dict keys
+                                        fetched_collections = list(collections_dict.keys())
+                                        logger.debug(f"Extracted collection names from nested 'collections' dict: {fetched_collections}")
+                                    else:
+                                        # The 'collections' value might be a list
+                                        fetched_collections = collections_dict if isinstance(collections_dict, list) else []
+                                else:
+                                    # Check if top-level values are dicts (format: {'case_studies': {'count': 5}})
+                                    sample_value = next(iter(data.values())) if data else None
+                                    if data and sample_value and isinstance(sample_value, dict):
+                                        # Check if nested value is also a dict (indicating {'collection': {'count': N}})
+                                        first_nested = next(iter(sample_value.values())) if sample_value else None
+                                        if first_nested and isinstance(first_nested, dict):
+                                            # This is the nested format, extract from top-level keys
+                                            fetched_collections = list(data.keys())
+                                        else:
+                                            # Top-level dict with simple values, extract keys
+                                            fetched_collections = list(data.keys())
+                                        logger.debug(f"Extracted collection names from dict format: {fetched_collections}")
+                                    else:
+                                        # Try common keys for list of collections
+                                        fetched_collections = data.get('collections') or data.get('data') or data.get('result') or data.get('items') or []
+                                        logger.debug(f"Tried common keys, got: {fetched_collections}")
+                            else:
+                                fetched_collections = []
+                                logger.debug(f"Unexpected response type: {type(data)}")
+                            
+                            if fetched_collections and isinstance(fetched_collections, list):
+                                collections = fetched_collections
+                                logger.info(f"Fetched {len(collections)} collections from RAG service: {collections}")
+                                break
+                            else:
+                                logger.warning(f"Failed to extract collections list. Got: {type(fetched_collections)} - {fetched_collections}")
+                    except Exception as e:
+                        logger.debug(f"Failed to fetch collections from {endpoint}: {e}")
+                        continue
+                
+                # Fallback to default collections if fetching failed
+                if not collections:
+                    logger.warning("Could not fetch collections from RAG service, using default collections")
+                    logger.warning("NOTE: Google Drive collections may not be included in default list")
+                    collections = ['case_studies', 'services', 'company_profiles', 'industry_insights']
+            except Exception as e:
+                logger.warning(f"Error fetching collections: {e}, using default collections")
+                collections = ['case_studies', 'services', 'company_profiles', 'industry_insights']
+        
+        # Final safety check: ensure collections is a list before building payload
+        if collections and isinstance(collections, dict):
+            logger.warning(f"RAG Client: Collections is still a dict! Converting to list. Dict keys: {list(collections.keys())[:5]}...")
+            collections = list(collections.keys())
+            logger.info(f"RAG Client: Converted to list: {collections}")
+        elif collections and not isinstance(collections, list):
+            logger.error(f"RAG Client: Collections is not a list! Type: {type(collections)}")
+            collections = None
         
         try:
             # Build request payload
@@ -57,6 +145,8 @@ class RAGClient:
                 'collections': collections,
                 'top_k': top_k
             }
+            
+            logger.debug(f"RAG query payload: query='{query}', collections={collections}, top_k={top_k}")
             
             # Add industry filter to metadata if provided
             if industry:
@@ -88,7 +178,9 @@ class RAGClient:
                     
                     if response.status_code == 200:
                         data = response.json()
-                        logger.debug(f"RAG query successful: {data.get('total_results', 0)} results")
+                        total_results = data.get('total_results', 0)
+                        logger.info(f"RAG query successful: {total_results} results from {len(collections)} collections: {collections}")
+                        logger.debug(f"RAG query response: {data}")
                         return data
                     elif response.status_code != 404:
                         # 404 means endpoint doesn't exist, try next one
