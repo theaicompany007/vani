@@ -165,7 +165,7 @@ cmd_full_deploy() {
     if [ -f "supabase_post_deploy.sh" ]; then
         echo ""
         echo -e "${YELLOW}📝 Updating Supabase configuration...${NC}"
-        chmod +x supabase_post_deploy.sh
+        chmod +x supabase_post_deploy-vani.sh
         ./supabase_post_deploy.sh
     else
         echo -e "${YELLOW}⚠️  supabase_post_deploy.sh not found, skipping Supabase update${NC}"
