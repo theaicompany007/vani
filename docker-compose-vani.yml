@@ -1,0 +1,59 @@
+version: "3.8"
+
+# VANI Outreach Command Center
+# Project name: vani
+# Location: /home/postgres/vani/docker-compose.yml
+# Connects to shared-infra-network to access RAG/ChromaDB AND Redis
+
+services:
+  # VANI Outreach Command Center
+  vani:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: vani
+    ports:
+      - "5000:5000"
+    env_file:
+      - .env.local
+    environment:
+      - PORT=5000
+      - FLASK_ENV=production
+      - FLASK_HOST=0.0.0.0
+      - RAG_SERVICE_URL=${RAG_SERVICE_URL:-https://rag.theaicompany.co}
+      - CHROMA_HOST=chroma
+      - CHROMA_PORT=8000
+      # Redis configuration (from shared-infra-network)
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      # Webhook base URL (will be updated with ngrok URL)
+      - WEBHOOK_BASE_URL=${VANI_WEBHOOK_BASE_URL:-https://vani.ngrok.app}
+      # Docker environment flag
+      - DOCKER_CONTAINER=true
+    networks:
+      - vani-network
+      - shared-infra-network
+    restart: unless-stopped
+    # Note: rag-service, chroma, and redis are in infrastructure project
+    # They are accessible via shared-infra-network using hostnames: rag-service, chroma, redis
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    volumes:
+      - ./logs:/app/logs
+
+networks:
+  vani-network:
+    driver: bridge
+  shared-infra-network:
+    name: shared-infra-network
+    external: true
+
