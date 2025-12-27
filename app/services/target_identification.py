@@ -182,7 +182,7 @@ class TargetIdentificationService:
             logger.warning(f"No industry context found for {industry}")
             return []
         
-        # Query RAG service for industry knowledge
+        # Query RAG service for industry knowledge (base query)
         rag_knowledge = self._get_rag_knowledge(industry)
         
         # Query Gemini for customer examples
@@ -196,11 +196,78 @@ class TargetIdentificationService:
         # This ensures we don't miss contacts that might rank higher after full analysis
         for i in range(0, len(contacts), batch_size):
             batch = contacts[i:i + batch_size]
+            
+            # Get company names from this batch for more specific RAG queries
+            company_names = [c.get('company', c.get('company_name', '')) for c in batch if c.get('company') or c.get('company_name')]
+            company_names = [name for name in company_names if name and name.strip()]  # Filter out empty names
+            
+            # Enhance RAG knowledge with company-specific queries if companies are available
+            # Create a copy to avoid mutating the original
+            batch_rag_knowledge = {
+                'case_studies': list(rag_knowledge.get('case_studies', [])),
+                'services': list(rag_knowledge.get('services', [])),
+                'insights': list(rag_knowledge.get('insights', [])),
+                'platforms': list(rag_knowledge.get('platforms', [])),
+                'company_profiles': list(rag_knowledge.get('company_profiles', [])),
+                'raw_results': rag_knowledge.get('raw_results', {})
+            }
+            if company_names and self.rag_client:
+                try:
+                    # Build company-specific collection names (e.g., "easemytrip_company_profiles")
+                    company_specific_collections = []
+                    for company_name in company_names[:3]:  # Limit to first 3 companies to avoid too many queries
+                        # Normalize company name to match collection naming: lowercase, replace spaces with nothing
+                        normalized_name = company_name.lower().replace(' ', '').replace('-', '').replace('_', '')
+                        company_collection = f"{normalized_name}_company_profiles"
+                        company_specific_collections.append(company_collection)
+                    
+                    # Query RAG with company-specific terms and company-specific collections
+                    company_query = f"{industry} {' '.join(company_names[:3])} case study solution analysis"
+                    logger.debug(f"Querying RAG for company-specific knowledge: {company_query}")
+                    logger.debug(f"Using company-specific collections: {company_specific_collections}")
+                    
+                    # Query both generic and company-specific collections
+                    all_collections = ['case_studies', 'company_profiles'] + company_specific_collections
+                    company_rag_result = self.rag_client.query(
+                        query=company_query,
+                        industry=industry,
+                        collections=all_collections,
+                        top_k=5
+                    )
+                    
+                    company_results = company_rag_result.get('results', {})
+                    
+                    # Merge results from all collections (including company-specific ones)
+                    # Company-specific collections will be in results with their collection name as key
+                    for collection_name in all_collections:
+                        if collection_name in company_results:
+                            results = company_results[collection_name]
+                            if results:
+                                # Add to company_profiles if it's a company-specific collection
+                                if collection_name.endswith('_company_profiles'):
+                                    batch_rag_knowledge['company_profiles'] = (batch_rag_knowledge.get('company_profiles', []) + results)[:10]
+                                elif collection_name == 'case_studies':
+                                    batch_rag_knowledge['case_studies'] = (batch_rag_knowledge.get('case_studies', []) + results)[:10]
+                    
+                    # Also check for results in company-specific collection keys directly
+                    for collection_name, results in company_results.items():
+                        if collection_name.endswith('_company_profiles') and results:
+                            batch_rag_knowledge['company_profiles'] = (batch_rag_knowledge.get('company_profiles', []) + results)[:10]
+                    
+                    total_company_results = sum(len(company_results.get(c, [])) for c in all_collections)
+                    logger.info(f"Enhanced RAG knowledge with {total_company_results} company-specific results from collections: {all_collections}")
+                    logger.debug(f"Company-specific results breakdown: {[(c, len(company_results.get(c, []))) for c in all_collections]}")
+                except Exception as e:
+                    logger.warning(f"Error querying company-specific RAG knowledge: {e}")
+                    import traceback
+                    logger.debug(traceback.format_exc())
+                    # Continue with base knowledge if company query fails
+            
             batch_recommendations = self._analyze_contact_batch(
                 batch,
                 industry,
                 industry_context,
-                rag_knowledge,
+                batch_rag_knowledge,
                 gemini_insights
             )
             recommendations.extend(batch_recommendations)
@@ -251,14 +318,17 @@ class TargetIdentificationService:
             # Query multiple collections for comprehensive knowledge
             collections = ['case_studies', 'services', 'industry_insights', 'platforms', 'company_profiles']
             
-            # Query all collections at once
-            query_text = f"{industry} case study service solution platform"
+            # Enhanced query to be more specific and match company-specific documents
+            # Include terms that would match company profiles, case studies, and analysis documents
+            query_text = f"{industry} case study service solution platform company profile analysis"
             rag_result = self.rag_client.query(
                 query=query_text,
                 industry=industry,
                 collections=collections,
                 top_k=5
             )
+            
+            logger.debug(f"RAG query: '{query_text}' returned {rag_result.get('total_results', 0)} total results")
             
             results = rag_result.get('results', {})
             

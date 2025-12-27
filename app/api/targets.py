@@ -1032,9 +1032,22 @@ def ai_identify_targets():
         logger.debug(f"Set fetch_limit to {fetch_limit} for industries={industries}")
         
         logger.debug(f"Executing contacts query with limit={fetch_limit}, industries={industries}")
-        contacts_response = contacts_query.execute()
         
-        logger.debug(f"Query executed: fetched {len(contacts_response.data) if contacts_response.data else 0} contacts")
+        # Add timeout protection - limit the number of contacts to process
+        # For very large datasets, we'll process in chunks to avoid timeouts
+        max_contacts_to_process = 1000  # Maximum contacts to process even if more are fetched
+        try:
+            contacts_response = contacts_query.execute()
+            logger.debug(f"Query executed: fetched {len(contacts_response.data) if contacts_response.data else 0} contacts")
+        except Exception as query_error:
+            logger.error(f"Error executing contacts query: {query_error}")
+            # If query fails, try with a smaller limit
+            if fetch_limit > 500:
+                logger.warning(f"Retrying with smaller limit (500)")
+                contacts_query = contacts_query.limit(500)
+                contacts_response = contacts_query.execute()
+            else:
+                raise
         
         # Check if the fetched contacts actually match the industry (for debugging)
         if contacts_response.data and industries and len(industries) == 1:
@@ -1215,7 +1228,14 @@ def ai_identify_targets():
         
         # Convert to list of dicts and filter by industries
         contacts = []
-        logger.debug(f"Fetched {len(contacts_response.data)} contacts from database before industry filtering")
+        all_fetched_contacts = contacts_response.data or []
+        
+        # Limit the number of contacts to process to avoid timeouts
+        if len(all_fetched_contacts) > max_contacts_to_process:
+            logger.warning(f"Limiting processing to {max_contacts_to_process} contacts (fetched {len(all_fetched_contacts)}) to avoid timeout")
+            all_fetched_contacts = all_fetched_contacts[:max_contacts_to_process]
+        
+        logger.debug(f"Fetched {len(all_fetched_contacts)} contacts from database before industry filtering (processing {len(all_fetched_contacts)} of {len(contacts_response.data) if contacts_response.data else 0} fetched)")
         logger.debug(f"Filtering for industries: {industries}")
         
         # Quick check: if we have contacts but none match, try fallback query
@@ -1274,7 +1294,20 @@ def ai_identify_targets():
                         logger.warning(f"Fallback query (no filter) found {len(fallback_response.data)} contacts. Will filter in Python for industry '{industries[0]}'.")
                         contacts_response = fallback_response
         
-        for c in contacts_response.data:
+        # Convert to list of dicts and filter by industries
+        contacts = []
+        all_fetched_contacts = contacts_response.data or []
+        
+        # Limit the number of contacts to process to avoid timeouts
+        max_contacts_to_process = 1000  # Maximum contacts to process even if more are fetched
+        if len(all_fetched_contacts) > max_contacts_to_process:
+            logger.warning(f"Limiting processing to {max_contacts_to_process} contacts (fetched {len(all_fetched_contacts)}) to avoid timeout")
+            all_fetched_contacts = all_fetched_contacts[:max_contacts_to_process]
+        
+        logger.debug(f"Fetched {len(all_fetched_contacts)} contacts from database before industry filtering (processing {len(all_fetched_contacts)} of {len(contacts_response.data) if contacts_response.data else 0} fetched)")
+        logger.debug(f"Filtering for industries: {industries}")
+        
+        for c in all_fetched_contacts:
             # Get industry from contact or company (prioritize contact industry)
             contact_industry = (c.get('industry') or '').strip()
             company_industry = None
@@ -1397,13 +1430,50 @@ def ai_identify_targets():
         
         # Use AI service to identify targets (use first industry for context, but results include all)
         primary_industry = industries[0] if industries else 'general'
-        identification_service = get_target_identification_service()
-        recommendations = identification_service.identify_targets(
-            industry=primary_industry,
-            contacts=contacts,
-            limit=limit,
-            min_seniority=min_seniority
-        )
+        
+        # Log processing info and verify matching
+        logger.info(f"Processing {len(contacts)} contacts for AI analysis (industries: {industries}, limit: {limit}, min_seniority: {min_seniority})")
+        
+        # Debug: Log sample of matched contacts to verify industry matching
+        if contacts:
+            sample_contacts = contacts[:5]
+            logger.debug(f"Sample matched contacts: {[(c.get('name'), c.get('industry'), c.get('company_name')) for c in sample_contacts]}")
+            # Check specifically for "travel" industry contacts and Nikhil Kumar
+            travel_contacts = [c for c in contacts if 'travel' in (c.get('industry') or '').lower()]
+            if travel_contacts:
+                logger.info(f"Found {len(travel_contacts)} contacts with 'travel' in industry: {[(c.get('name'), c.get('industry')) for c in travel_contacts[:5]]}")
+                # Check specifically for Nikhil Kumar
+                nikhil_contacts = [c for c in travel_contacts if 'nikhil' in (c.get('name') or '').lower() and 'kumar' in (c.get('name') or '').lower()]
+                if nikhil_contacts:
+                    logger.info(f"Found Nikhil Kumar in travel contacts: {nikhil_contacts[0]}")
+                else:
+                    logger.warning(f"Nikhil Kumar not found in travel contacts. Total travel contacts: {len(travel_contacts)}")
+            else:
+                logger.warning(f"No contacts found with 'travel' in industry field. Total contacts: {len(contacts)}")
+        
+        try:
+            identification_service = get_target_identification_service()
+            recommendations = identification_service.identify_targets(
+                industry=primary_industry,
+                contacts=contacts,
+                limit=limit,
+                min_seniority=min_seniority
+            )
+            logger.info(f"AI analysis complete: {len(recommendations)} recommendations generated")
+            
+            # Debug: Check if Nikhil Kumar is in final recommendations (after limiting to top N)
+            nikhil_recs = [r for r in recommendations if hasattr(r, 'contact_name') and 'nikhil' in (r.contact_name or '').lower() and 'kumar' in (r.contact_name or '').lower()]
+            if nikhil_recs:
+                logger.info(f"Nikhil Kumar found in final top {len(recommendations)} recommendations: {nikhil_recs[0].contact_name}, seniority: {nikhil_recs[0].seniority_score}, confidence: {nikhil_recs[0].confidence_score}")
+            else:
+                # Note: The service layer already logs if Nikhil Kumar was found before limiting
+                # If not in final list, it's because he was ranked lower by confidence score
+                logger.debug(f"Nikhil Kumar not in final top {len(recommendations)} recommendations (sorted by confidence score). Check service logs for his scores.")
+        except Exception as ai_error:
+            logger.error(f"Error during AI analysis: {ai_error}", exc_info=True)
+            # Return empty recommendations rather than crashing
+            recommendations = []
+            # Still return success but with empty results
         
         # Update contact analysis tracking (mark as analyzed)
         if analyzed_contact_ids:

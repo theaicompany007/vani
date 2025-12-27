@@ -291,18 +291,24 @@
         <section id="view-dashboard" class="space-y-8 animate-fade-in">
             <!-- Industry Selector for Situation Room -->
             <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
-                <div class="flex items-center justify-between">
+                <div class="flex items-center justify-between mb-3">
                     <div class="flex items-center gap-3">
                         <i class="fa-solid fa-industry text-indigo-600"></i>
                         <label class="text-sm font-medium text-slate-700">Personalize for Industry:</label>
-                        <select id="situation-room-industry" onchange="loadPersonalizedSituationRoom()" class="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
-                            <option value="">-- Select Industry --</option>
-                        </select>
-                        <span id="situation-room-persona-badge" class="hidden px-2 py-1 bg-indigo-100 text-indigo-700 text-xs font-medium rounded"></span>
                     </div>
                     <button onclick="loadPersonalizedSituationRoom()" class="text-xs text-indigo-600 hover:text-indigo-700 font-medium">
                         <i class="fa-solid fa-sync-alt mr-1"></i>Refresh
                     </button>
+                </div>
+                <!-- Industries Filter (Horizontal) -->
+                <div>
+                    <div class="flex flex-wrap gap-2" id="situation-room-industry-buttons">
+                        <button type="button" onclick="toggleSituationRoomIndustry('')" 
+                                class="situation-room-industry-btn px-3 py-1.5 text-sm font-medium text-slate-700 bg-emerald-100 border-2 border-emerald-500 rounded-lg hover:bg-emerald-200 transition-colors whitespace-nowrap">
+                            All Industries
+                        </button>
+                        <!-- Industry buttons will be populated here -->
+                    </div>
                 </div>
             </div>
             
@@ -1427,16 +1433,34 @@
                 </div>
             </div>
 
-            <!-- Search and Filter -->
-            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <input type="text" id="company-search" placeholder="Search by name, domain, or industry..." class="px-4 py-2 border border-slate-300 rounded-lg text-sm" onkeyup="filterCompanies()">
-                    <select id="company-industry-filter" class="px-4 py-2 border border-slate-300 rounded-lg text-sm" onchange="filterCompanies()">
-                        <option value="">All Industries</option>
-                    </select>
-                    <button onclick="loadCompanies()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-bold">
+            <!-- Search and Filters for Companies -->
+            <div class="mb-4 space-y-4">
+                <div class="flex gap-2 items-center">
+                    <div class="flex-1 relative">
+                        <input type="text" id="company-search" placeholder="Search by name, domain, or industry..." 
+                               class="w-full px-4 py-2 border border-slate-300 rounded-lg pr-10 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                               oninput="handleCompanySearchInput(event)"
+                               onkeyup="handleCompanySearchKeyup(event)">
+                        <i class="fa-solid fa-search absolute right-3 top-3 text-slate-400"></i>
+                        <button id="company-search-clear" onclick="clearCompanySearch()" class="hidden absolute right-10 top-3 text-slate-400 hover:text-slate-600" title="Clear search">
+                            <i class="fa-solid fa-times"></i>
+                        </button>
+                    </div>
+                    <button onclick="loadCompanies()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-bold whitespace-nowrap">
                         <i class="fa-solid fa-refresh mr-2"></i>Refresh
                     </button>
+                </div>
+                
+                <!-- Industries Filter (Horizontal) -->
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-2">Industries</label>
+                    <div class="flex flex-wrap gap-2" id="companies-industry-buttons">
+                        <button type="button" onclick="toggleCompanyIndustry('')" 
+                                class="company-industry-btn px-3 py-1.5 text-sm font-medium text-slate-700 bg-emerald-100 border-2 border-emerald-500 rounded-lg hover:bg-emerald-200 transition-colors whitespace-nowrap">
+                            All Industries
+                        </button>
+                        <!-- Industry buttons will be populated here -->
+                    </div>
                 </div>
             </div>
 
@@ -1474,19 +1498,49 @@
                 </div>
             </div>
 
-            <!-- Search and Filter -->
-            <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 mb-6">
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <input type="text" id="contact-search" placeholder="Search by name, email, phone, company, role, industry, or source..." class="px-4 py-2 border border-slate-300 rounded-lg text-sm" onkeyup="filterContacts()">
-                    <select id="contact-company-filter" class="px-4 py-2 border border-slate-300 rounded-lg text-sm" onchange="filterContacts()">
-                        <option value="">All Companies</option>
-                    </select>
-                    <select id="contact-industry-filter" class="px-4 py-2 border border-slate-300 rounded-lg text-sm" onchange="filterContacts()">
-                        <option value="">All Industries</option>
-                    </select>
-                    <button onclick="loadContacts(true)" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-bold">
+            <!-- Search and Filters for Contacts -->
+            <div class="mb-4 space-y-4">
+                <div class="flex gap-2 items-center">
+                    <div class="flex-1 relative">
+                        <input type="text" id="contact-search" placeholder="Search by name, email, phone, company, role, industry, or source..." 
+                               class="w-full px-4 py-2 border border-slate-300 rounded-lg pr-10 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                               oninput="handleContactSearchInput(event)"
+                               onkeyup="handleContactSearchKeyup(event)">
+                        <i class="fa-solid fa-search absolute right-3 top-3 text-slate-400"></i>
+                        <button id="contact-search-clear" onclick="clearContactSearch()" class="hidden absolute right-10 top-3 text-slate-400 hover:text-slate-600" title="Clear search">
+                            <i class="fa-solid fa-times"></i>
+                        </button>
+                    </div>
+                    <button onclick="loadContacts(true)" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-bold whitespace-nowrap">
                         <i class="fa-solid fa-refresh mr-2"></i>Refresh
                     </button>
+                </div>
+                
+                <!-- Industries Filter (Horizontal) -->
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-2">Industries</label>
+                    <div class="flex flex-wrap gap-2" id="contacts-industry-buttons">
+                        <button type="button" onclick="toggleContactIndustry('')" 
+                                class="contact-industry-btn px-3 py-1.5 text-sm font-medium text-slate-700 bg-emerald-100 border-2 border-emerald-500 rounded-lg hover:bg-emerald-200 transition-colors whitespace-nowrap">
+                            All Industries
+                        </button>
+                        <!-- Industry buttons will be populated here -->
+                    </div>
+                </div>
+                
+                <!-- Companies Filter (Alphabetical/Numerical Index) -->
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-2">Companies</label>
+                    <div class="flex flex-wrap gap-2 mb-2" id="contacts-company-index">
+                        <button type="button" onclick="toggleContactCompanyIndex('')" 
+                                class="contact-company-index-btn px-3 py-1.5 text-sm font-medium text-slate-700 bg-emerald-100 border-2 border-emerald-500 rounded-lg hover:bg-emerald-200 transition-colors whitespace-nowrap">
+                            All Companies
+                        </button>
+                        <!-- Index buttons (A-Z, 0-9) will be populated here -->
+                    </div>
+                    <div id="contacts-company-list" class="hidden mt-2">
+                        <!-- Company buttons for selected index will be shown here horizontally -->
+                    </div>
                 </div>
             </div>
 
@@ -2375,10 +2429,7 @@
         
         // Load personalized Situation Room content
         async function loadPersonalizedSituationRoom() {
-            const industrySelect = document.getElementById('situation-room-industry');
-            if (!industrySelect) return;
-            
-            const industryId = industrySelect.value;
+            const industryId = situationRoomSelectedIndustry;
             if (!industryId) {
                 // Reset to default FMCG content
                 resetSituationRoomToDefault();
@@ -2421,11 +2472,17 @@
                         badgeEl.textContent = `${metrics.coverage_gap_percentage}% Unserved`;
                     }
                     
-                    // Update persona badge
+                    // Update persona badge (if it still exists in the UI)
                     const personaBadge = document.getElementById('situation-room-persona-badge');
                     if (personaBadge && ctx.vani_persona) {
                         personaBadge.textContent = ctx.vani_persona;
                         personaBadge.classList.remove('hidden');
+                    }
+                    
+                    // Also update the persona map for the button display
+                    if (industry.name) {
+                        situationRoomPersonaMap[industry.name] = ctx.vani_persona;
+                        renderSituationRoomIndustryButtons();
                     }
                     
                     // Update chart note
@@ -2573,12 +2630,14 @@
         }
         
         // Initialize industry selectors when tabs are loaded
+        // Situation Room industry selection state
+        let situationRoomSelectedIndustry = '';
+        let situationRoomPersonaMap = {}; // Map of industry name -> persona
+        
         function initializePersonalizationSelectors() {
-            // Populate Situation Room industry selector
-            const situationRoomSelect = document.getElementById('situation-room-industry');
-            if (situationRoomSelect && allIndustries && allIndustries.length > 0) {
-                situationRoomSelect.innerHTML = '<option value="">-- Select Industry --</option>' +
-                    allIndustries.map(ind => `<option value="${ind.id}">${ind.name}</option>`).join('');
+            // Render Situation Room industry buttons with persona mappings
+            if (allIndustries && allIndustries.length > 0) {
+                loadSituationRoomIndustries();
             }
             
             // Populate Arbitrage industry selector (if exists)
@@ -2594,6 +2653,85 @@
                 revenueSimSelect.innerHTML = '<option value="">-- Select Industry --</option>' +
                     allIndustries.map(ind => `<option value="${ind.id}">${ind.name}</option>`).join('');
             }
+        }
+        
+        // Load Situation Room industries with persona mappings
+        async function loadSituationRoomIndustries() {
+            if (!allIndustries || allIndustries.length === 0) return;
+            
+            // Fetch persona mappings for all industries
+            const personaPromises = allIndustries.map(async (industry) => {
+                try {
+                    const response = await fetch(`/api/pitch/industry-context/${encodeURIComponent(industry.name)}`, {
+                        credentials: 'include'
+                    });
+                    const data = await response.json();
+                    if (data.success && data.vani_persona) {
+                        return { industry, persona: data.vani_persona };
+                    }
+                } catch (error) {
+                    console.error(`Error fetching persona for ${industry.name}:`, error);
+                }
+                return { industry, persona: null };
+            });
+            
+            const results = await Promise.all(personaPromises);
+            
+            // Build persona map
+            situationRoomPersonaMap = {};
+            results.forEach(({ industry, persona }) => {
+                if (persona) {
+                    situationRoomPersonaMap[industry.name] = persona;
+                }
+            });
+            
+            renderSituationRoomIndustryButtons();
+        }
+        
+        // Render Situation Room industry buttons with persona mappings
+        function renderSituationRoomIndustryButtons() {
+            const container = document.getElementById('situation-room-industry-buttons');
+            if (!container || !allIndustries || allIndustries.length === 0) return;
+            
+            const isAllSelected = situationRoomSelectedIndustry === '';
+            const buttons = allIndustries.map(industry => {
+                const isSelected = String(situationRoomSelectedIndustry) === String(industry.id);
+                const escapedName = escapeHtml(industry.name);
+                const escapedIdForAttr = (industry.id || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                const persona = situationRoomPersonaMap[industry.name];
+                const displayText = persona ? `${escapedName} : ${escapeHtml(persona)}` : escapedName;
+                
+                return `
+                    <button type="button" 
+                            onclick="toggleSituationRoomIndustry('${escapedIdForAttr}')" 
+                            class="situation-room-industry-btn px-3 py-1.5 text-sm font-medium rounded-lg transition-colors whitespace-nowrap ${
+                                isSelected 
+                                    ? 'text-slate-700 bg-emerald-100 border-2 border-emerald-500' 
+                                    : 'text-slate-700 bg-white border border-slate-300 hover:bg-blue-50 hover:border-blue-500 hover:text-blue-700'
+                            }">
+                        ${displayText}
+                    </button>
+                `;
+            }).join('');
+            
+            container.innerHTML = `
+                <button type="button" onclick="toggleSituationRoomIndustry('')" 
+                        class="situation-room-industry-btn px-3 py-1.5 text-sm font-medium rounded-lg transition-colors whitespace-nowrap ${
+                            isAllSelected 
+                                ? 'text-slate-700 bg-emerald-100 border-2 border-emerald-500' 
+                                : 'text-slate-700 bg-white border border-slate-300 hover:bg-blue-50 hover:border-blue-500 hover:text-blue-700'
+                        }">
+                    All Industries
+                </button>
+                ${buttons}
+            `;
+        }
+        
+        // Toggle Situation Room industry selection
+        function toggleSituationRoomIndustry(industryId) {
+            situationRoomSelectedIndustry = industryId || '';
+            renderSituationRoomIndustryButtons();
+            loadPersonalizedSituationRoom();
         }
 
         // --- TARGET LIST LOGIC ---
@@ -4373,6 +4511,10 @@
             updateAIFinderLoadingProgress(50, 'Generating recommendations...');
             
             try {
+                // Create AbortController for timeout handling
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minute timeout (AI processing can take longer)
+                
                 const response = await window.fetch('/api/targets/ai-identify', {
                     method: 'POST',
                     headers: {
@@ -4392,17 +4534,65 @@
                             preset: preset,
                             exclude_processed: excludeProcessed
                         }
-                    })
+                    }),
+                    signal: controller.signal
                 });
                 
+                clearTimeout(timeoutId);
                 updateAIFinderLoadingProgress(80, 'Finalizing results...');
                 
+                // Check if response is OK
                 if (!response.ok) {
-                    const error = await response.json();
-                    throw new Error(error.error || `HTTP ${response.status}`);
+                    // Check Content-Type to determine if it's JSON or HTML
+                    const contentType = response.headers.get('content-type') || '';
+                    let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+                    
+                    if (contentType.includes('application/json')) {
+                        try {
+                            const error = await response.json();
+                            errorMessage = error.error || error.message || errorMessage;
+                        } catch (e) {
+                            // JSON parse failed, use default message
+                            console.error('Failed to parse error JSON:', e);
+                        }
+                    } else {
+                        // HTML response (502/500 errors often return HTML)
+                        try {
+                            const htmlText = await response.text();
+                            // Try to extract error message from HTML
+                            const errorMatch = htmlText.match(/<title[^>]*>([^<]+)<\/title>/i) || 
+                                              htmlText.match(/<h1[^>]*>([^<]+)<\/h1>/i) ||
+                                              htmlText.match(/Error[:\s]+([^<\n]+)/i);
+                            if (errorMatch) {
+                                errorMessage = `${errorMessage} - ${errorMatch[1]}`;
+                            }
+                        } catch (e) {
+                            console.error('Failed to read error response:', e);
+                        }
+                        
+                        // Provide user-friendly message based on status code
+                        if (response.status === 502) {
+                            errorMessage = 'Server is temporarily unavailable. The request may be taking too long. Please try again in a moment or reduce the number of industries.';
+                        } else if (response.status === 500) {
+                            errorMessage = 'Server error occurred. Please try again or contact support if the issue persists.';
+                        } else if (response.status === 504) {
+                            errorMessage = 'Request timed out. Try reducing the number of industries or using a more specific search.';
+                        }
+                    }
+                    
+                    throw new Error(errorMessage);
                 }
                 
-                const data = await response.json();
+                // Parse JSON response with error handling
+                let data;
+                try {
+                    const responseText = await response.text();
+                    data = JSON.parse(responseText);
+                } catch (parseError) {
+                    console.error('Failed to parse JSON response:', parseError);
+                    console.error('Response text preview:', responseText?.substring(0, 500));
+                    throw new Error('Invalid response from server. The server may be experiencing issues. Please try again.');
+                }
                 aiRecommendations = data.recommendations || [];
                 
                 // Store search configuration for report generation
@@ -4454,7 +4644,26 @@
                 console.error('AI Target Finder error:', error);
                 document.getElementById('ai-finder-loading').classList.add('hidden');
                 document.getElementById('ai-finder-empty').classList.remove('hidden');
-                showToast('error', 'AI Target Finder Failed', error.message);
+                
+                // Provide user-friendly error messages
+                let errorTitle = 'AI Target Finder Failed';
+                let errorMessage = error.message;
+                
+                if (error.name === 'AbortError' || error.message.includes('timeout')) {
+                    errorTitle = 'Request Timeout';
+                    errorMessage = 'The search is taking too long. Try reducing the number of industries or using a more specific search.';
+                } else if (error.message.includes('502') || error.message.includes('Bad Gateway')) {
+                    errorTitle = 'Server Unavailable';
+                    errorMessage = 'The server is temporarily unavailable. Please try again in a moment. If the problem persists, try reducing the number of industries.';
+                } else if (error.message.includes('500') || error.message.includes('Internal Server Error')) {
+                    errorTitle = 'Server Error';
+                    errorMessage = 'An error occurred on the server. Please try again or contact support if the issue persists.';
+                } else if (error.message.includes('Invalid response')) {
+                    errorTitle = 'Invalid Response';
+                    errorMessage = 'The server returned an unexpected response. Please try again.';
+                }
+                
+                showToast('error', errorTitle, errorMessage);
             }
         }
         
@@ -9856,7 +10065,7 @@
                             onclick="togglePitchIndustry('${escapedIdForAttr}')" 
                             class="pitch-industry-btn px-3 py-1.5 text-sm font-medium rounded-lg transition-colors whitespace-nowrap ${
                                 isSelected 
-                                    ? 'text-slate-700 bg-indigo-100 border-2 border-indigo-500' 
+                                    ? 'text-slate-700 bg-emerald-100 border-2 border-emerald-500' 
                                     : 'text-slate-700 bg-white border border-slate-300 hover:bg-blue-50 hover:border-blue-500 hover:text-blue-700'
                             }">
                         ${escapedName}${countText}
@@ -10826,6 +11035,11 @@ Project VANI Team`;
         const companiesPerPage = 20;
         const COMPANIES_CACHE_KEY = 'vani_companies_cache';
         const COMPANIES_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes in milliseconds
+        
+        // Filter state for horizontal UI
+        let companiesSelectedIndustry = '';
+        let companiesAllIndustries = [];
+        let companySearchTimeout = null;
 
         // Cache management functions for companies
         function getCompaniesFromCache() {
@@ -10961,32 +11175,151 @@ Project VANI Team`;
             }
         }
 
+        // Load industries for Companies filter
         function loadCompanyIndustries() {
-            const filter = document.getElementById('company-industry-filter');
-            if (!filter) return;
+            companiesAllIndustries = [...new Set(companies.map(c => c.industry).filter(Boolean))].sort();
+            renderCompanyIndustryButtons();
+        }
+        
+        // Render industry filter buttons for Companies
+        function renderCompanyIndustryButtons() {
+            const container = document.getElementById('companies-industry-buttons');
+            if (!container) return;
             
-            const industries = [...new Set(companies.map(c => c.industry).filter(Boolean))].sort();
-            filter.innerHTML = '<option value="">All Industries</option>';
-            industries.forEach(industry => {
-                const option = document.createElement('option');
-                option.value = industry;
-                option.textContent = industry;
-                filter.appendChild(option);
+            const searchTerm = (document.getElementById('company-search')?.value || '').toLowerCase();
+            
+            // Filter industries based on search
+            const filteredIndustries = companiesAllIndustries.filter(industry => {
+                if (searchTerm) {
+                    const industryNameMatch = industry.toLowerCase().includes(searchTerm);
+                    // Check if any companies in this industry match the search
+                    const hasMatchingCompanies = companies.some(company => {
+                        if ((company.industry || '').toLowerCase() !== industry.toLowerCase()) return false;
+                        const name = (company.name || '').toLowerCase();
+                        const domain = (company.domain || '').toLowerCase();
+                        return name.includes(searchTerm) || domain.includes(searchTerm);
+                    });
+                    return industryNameMatch || hasMatchingCompanies;
+                }
+                return true;
             });
+            
+            // Calculate counts for each industry
+            const industriesWithCounts = filteredIndustries.map(industry => {
+                const totalInIndustry = companies.filter(c => 
+                    (c.industry || '').toLowerCase() === industry.toLowerCase()
+                ).length;
+                const filteredInIndustry = companies.filter(company => {
+                    if ((company.industry || '').toLowerCase() !== industry.toLowerCase()) return false;
+                    if (searchTerm) {
+                        const name = (company.name || '').toLowerCase();
+                        const domain = (company.domain || '').toLowerCase();
+                        return name.includes(searchTerm) || domain.includes(searchTerm);
+                    }
+                    return true;
+                }).length;
+                
+                return { name: industry, totalCount: totalInIndustry, filteredCount: filteredInIndustry };
+            });
+            
+            const isAllSelected = companiesSelectedIndustry === '';
+            const buttons = industriesWithCounts.map(industry => {
+                const isSelected = companiesSelectedIndustry === industry.name;
+                const escapedName = escapeHtml(industry.name);
+                const escapedNameForAttr = industry.name.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                const countText = industry.totalCount > 0 ? ` (${industry.filteredCount} of ${industry.totalCount})` : '';
+                return `
+                    <button type="button" 
+                            onclick="toggleCompanyIndustry('${escapedNameForAttr}')" 
+                            class="company-industry-btn px-3 py-1.5 text-sm font-medium rounded-lg transition-colors whitespace-nowrap ${
+                                isSelected 
+                                    ? 'text-slate-700 bg-emerald-100 border-2 border-emerald-500' 
+                                    : 'text-slate-700 bg-white border border-slate-300 hover:bg-blue-50 hover:border-blue-500 hover:text-blue-700'
+                            }">
+                        ${escapedName}${countText}
+                    </button>
+                `;
+            }).join('');
+            
+            container.innerHTML = `
+                <button type="button" onclick="toggleCompanyIndustry('')" 
+                        class="company-industry-btn px-3 py-1.5 text-sm font-medium rounded-lg transition-colors whitespace-nowrap ${
+                            isAllSelected 
+                                ? 'text-slate-700 bg-emerald-100 border-2 border-emerald-500' 
+                                : 'text-slate-700 bg-white border border-slate-300 hover:bg-blue-50 hover:border-blue-500 hover:text-blue-700'
+                        }">
+                    All Industries
+                </button>
+                ${buttons}
+            `;
+        }
+        
+        // Toggle industry filter for Companies
+        function toggleCompanyIndustry(industryName) {
+            companiesSelectedIndustry = industryName || '';
+            renderCompanyIndustryButtons();
+            filterCompanies();
+        }
+        
+        // Handle company search input
+        function handleCompanySearchInput(event) {
+            const searchInput = event.target;
+            const clearBtn = document.getElementById('company-search-clear');
+            
+            // Show/hide clear button
+            if (searchInput.value.trim()) {
+                if (clearBtn) clearBtn.classList.remove('hidden');
+            } else {
+                if (clearBtn) clearBtn.classList.add('hidden');
+            }
+            
+            // Debounce search for better performance
+            if (companySearchTimeout) {
+                clearTimeout(companySearchTimeout);
+            }
+            
+            companySearchTimeout = setTimeout(() => {
+                filterCompanies();
+            }, 200);
+        }
+        
+        // Handle company search keyup
+        function handleCompanySearchKeyup(event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                if (companySearchTimeout) {
+                    clearTimeout(companySearchTimeout);
+                }
+                filterCompanies();
+            }
+        }
+        
+        // Clear company search
+        function clearCompanySearch() {
+            const searchInput = document.getElementById('company-search');
+            const clearBtn = document.getElementById('company-search-clear');
+            if (searchInput) {
+                searchInput.value = '';
+                if (clearBtn) clearBtn.classList.add('hidden');
+                filterCompanies();
+            }
         }
 
         function filterCompanies() {
-            const search = document.getElementById('company-search').value.toLowerCase();
-            const industry = document.getElementById('company-industry-filter').value;
+            const search = document.getElementById('company-search')?.value.toLowerCase() || '';
             
             companiesFiltered = companies.filter(c => {
                 const matchSearch = !search || 
                     (c.name && c.name.toLowerCase().includes(search)) ||
-                    (c.domain && c.domain.toLowerCase().includes(search)) ||
+                    (c.domain && c.domain && c.domain.toLowerCase().includes(search)) ||
                     (c.industry && c.industry.toLowerCase().includes(search));
-                const matchIndustry = !industry || c.industry === industry;
+                const matchIndustry = !companiesSelectedIndustry || 
+                    (c.industry && c.industry.toLowerCase() === companiesSelectedIndustry.toLowerCase());
                 return matchSearch && matchIndustry;
             });
+            
+            // Update filter buttons to reflect search results
+            renderCompanyIndustryButtons();
             
             companiesPage = 1;
             renderCompanies();
@@ -11813,8 +12146,12 @@ Project VANI Team`;
 
         function viewCompanyContacts(companyId) {
             switchTab('contacts');
-            document.getElementById('contact-company-filter').value = companyId;
-            filterContacts();
+            // Use the new horizontal filter system
+            if (companyId) {
+                toggleContactCompany(companyId);
+            } else {
+                toggleContactCompany('');
+            }
         }
 
         // --- CONTACTS MANAGEMENT FUNCTIONS ---
@@ -11825,6 +12162,13 @@ Project VANI Team`;
         const contactsPerPage = 50;
         const CONTACTS_CACHE_KEY = 'vani_contacts_cache';
         const CONTACTS_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes in milliseconds
+        
+        // Filter state for horizontal UI
+        let contactsSelectedCompanies = new Set();
+        let contactsSelectedIndustry = '';
+        let contactsAllCompanies = [];
+        let contactsAllIndustries = [];
+        let contactSearchTimeout = null;
 
         // Guard to prevent multiple simultaneous loads
         let isLoadingContacts = false;
@@ -11966,92 +12310,455 @@ Project VANI Team`;
             }
         }
 
+        // Load companies and industries for Contacts filters
         async function loadContactFilters() {
-            // Load companies for filter
-            const companyFilter = document.getElementById('contact-company-filter');
-            if (companyFilter) {
-                try {
-                    // Fetch all companies with higher limit
-                    const response = await fetch('/api/companies?limit=1000', { credentials: 'include' });
-                    
-                    if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                    }
-                    
-                    const contentType = response.headers.get('content-type');
-                    if (!contentType || !contentType.includes('application/json')) {
-                        const text = await response.text();
-                        console.error('Non-JSON response from companies API:', text.substring(0, 200));
-                        throw new Error('Invalid response format from server');
-                    }
-                    
-                    const data = await response.json();
-                    
-                    companyFilter.innerHTML = '<option value="">All Companies</option>';
-                    
-                    if (data.success && data.companies && data.companies.length > 0) {
-                        // Sort companies by name
-                        const sortedCompanies = [...data.companies].sort((a, b) => 
-                            (a.name || '').localeCompare(b.name || '')
-                        );
-                        
-                        sortedCompanies.forEach(company => {
-                            const option = document.createElement('option');
-                            option.value = company.id;
-                            option.textContent = company.name || 'Unnamed Company';
-                            companyFilter.appendChild(option);
-                        });
-                        console.log(`✅ Loaded ${sortedCompanies.length} companies into filter dropdown`);
-                    } else {
-                        console.warn('⚠️ No companies returned from API, using fallback from contacts');
-                        // Fallback: use company names from contacts if companies API fails
-                        const companyNames = [...new Set(contacts.map(c => c.company || c.company_name).filter(Boolean))].sort();
-                        companyNames.forEach(companyName => {
-                            const option = document.createElement('option');
-                            option.value = companyName;
-                            option.textContent = companyName;
-                            companyFilter.appendChild(option);
-                        });
-                        console.log(`✅ Loaded ${companyNames.length} companies from contacts fallback`);
-                    }
-                } catch (error) {
-                    console.error('❌ Error loading companies for filter:', error);
+            try {
+                // Fetch all companies with higher limit
+                const response = await fetch('/api/companies?limit=1000', { credentials: 'include' });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    const text = await response.text();
+                    console.error('Non-JSON response from companies API:', text.substring(0, 200));
+                    throw new Error('Invalid response format from server');
+                }
+                
+                const data = await response.json();
+                
+                if (data.success && data.companies && data.companies.length > 0) {
+                    // Sort companies by name
+                    contactsAllCompanies = [...data.companies].sort((a, b) => 
+                        (a.name || '').localeCompare(b.name || '')
+                    );
+                } else {
                     // Fallback: use company names from contacts
                     const companyNames = [...new Set(contacts.map(c => c.company || c.company_name).filter(Boolean))].sort();
-                    companyFilter.innerHTML = '<option value="">All Companies</option>';
-                    companyNames.forEach(companyName => {
-                        const option = document.createElement('option');
-                        option.value = companyName;
-                        option.textContent = companyName;
-                        companyFilter.appendChild(option);
-                    });
-                    console.log(`✅ Loaded ${companyNames.length} companies from contacts fallback (error case)`);
+                    contactsAllCompanies = companyNames.map(name => ({ id: name, name: name }));
                 }
+                
+                renderContactCompanyButtons();
+                console.log(`✅ Loaded ${contactsAllCompanies.length} companies for filter`);
+            } catch (error) {
+                console.error('❌ Error loading companies for filter:', error);
+                // Fallback: use company names from contacts
+                const companyNames = [...new Set(contacts.map(c => c.company || c.company_name).filter(Boolean))].sort();
+                contactsAllCompanies = companyNames.map(name => ({ id: name, name: name }));
+                renderContactCompanyButtons();
+                console.log(`✅ Loaded ${contactsAllCompanies.length} companies from contacts fallback (error case)`);
             }
             
             // Load industries for filter
-            const industryFilter = document.getElementById('contact-industry-filter');
-            if (industryFilter) {
-                // Get industries from both contacts and companies
-                const contactIndustries = [...new Set(contacts.map(c => c.industry).filter(Boolean))];
-                const companyIndustries = [...new Set(contacts.map(c => c.company_industry || (c.companies && c.companies.industry)).filter(Boolean))];
-                const allIndustries = [...new Set([...contactIndustries, ...companyIndustries])].sort();
-                
-                industryFilter.innerHTML = '<option value="">All Industries</option>';
-                allIndustries.forEach(industry => {
-                    const option = document.createElement('option');
-                    option.value = industry;
-                    option.textContent = industry;
-                    industryFilter.appendChild(option);
+            const contactIndustries = [...new Set(contacts.map(c => c.industry).filter(Boolean))];
+            const companyIndustries = [...new Set(contacts.map(c => c.company_industry || (c.companies && c.companies.industry)).filter(Boolean))];
+            contactsAllIndustries = [...new Set([...contactIndustries, ...companyIndustries])].sort();
+            
+            renderContactIndustryButtons();
+            console.log(`Loaded ${contactsAllIndustries.length} industries for filter`);
+        }
+        
+        // State for company index view
+        let contactsCompanyIndexSelected = ''; // Selected index (A-Z, 0-9, or '' for all)
+        
+        // Render company index buttons (A-Z, 0-9) for Contacts
+        function renderContactCompanyButtons() {
+            const indexContainer = document.getElementById('contacts-company-index');
+            if (!indexContainer || !contactsAllCompanies || contactsAllCompanies.length === 0) return;
+            
+            // Filter companies by selected industry first
+            let filteredCompanies = contactsAllCompanies;
+            if (contactsSelectedIndustry) {
+                filteredCompanies = contactsAllCompanies.filter(company => {
+                    // Check if any contacts in this company belong to the selected industry
+                    return contacts.some(contact => {
+                        const contactCompanyId = contact.company_id || contact.company || contact.company_name;
+                        const companyId = company.id || company.name;
+                        const matchesCompany = contactCompanyId === companyId;
+                        const matchesIndustry = (contact.industry || '').toLowerCase() === contactsSelectedIndustry.toLowerCase();
+                        return matchesCompany && matchesIndustry;
+                    });
                 });
-                console.log(`Loaded ${allIndustries.length} industries into filter`);
+            }
+            
+            // Group companies by first character
+            const companiesByIndex = {};
+            const searchTerm = (document.getElementById('contact-search')?.value || '').toLowerCase();
+            
+            filteredCompanies.forEach(company => {
+                const companyName = (company.name || '').trim();
+                if (!companyName) return;
+                
+                // Get first character (uppercase)
+                const firstChar = companyName.charAt(0).toUpperCase();
+                let indexKey = firstChar;
+                
+                // Categorize: A-Z, 0-9, or 'OTHER' for special characters
+                if (/[A-Z]/.test(firstChar)) {
+                    indexKey = firstChar;
+                } else if (/[0-9]/.test(firstChar)) {
+                    indexKey = firstChar;
+                } else {
+                    indexKey = 'OTHER';
+                }
+                
+                if (!companiesByIndex[indexKey]) {
+                    companiesByIndex[indexKey] = [];
+                }
+                companiesByIndex[indexKey].push(company);
+            });
+            
+            // Calculate counts for each index
+            const indexCounts = {};
+            Object.keys(companiesByIndex).forEach(indexKey => {
+                const companiesInIndex = companiesByIndex[indexKey];
+                let totalCount = 0;
+                
+                companiesInIndex.forEach(company => {
+                    const companyId = company.id || company.name;
+                    const contactsInCompany = contacts.filter(c => {
+                        const contactCompanyId = c.company_id || c.company || c.company_name;
+                        return contactCompanyId === companyId;
+                    });
+                    totalCount += contactsInCompany.length;
+                });
+                
+                indexCounts[indexKey] = totalCount;
+            });
+            
+            // Generate index buttons (A-Z, then 0-9, then OTHER if exists)
+            const indexButtons = [];
+            
+            // All Companies button
+            const allTotalCount = Object.values(indexCounts).reduce((sum, count) => sum + count, 0);
+            const isAllSelected = contactsCompanyIndexSelected === '';
+            indexButtons.push(`
+                <button type="button" onclick="toggleContactCompanyIndex('')" 
+                        class="contact-company-index-btn px-3 py-1.5 text-sm font-medium rounded-lg transition-colors whitespace-nowrap ${
+                            isAllSelected 
+                                ? 'text-slate-700 bg-emerald-100 border-2 border-emerald-500' 
+                                : 'text-slate-700 bg-white border border-slate-300 hover:bg-blue-50 hover:border-blue-500 hover:text-blue-700'
+                        }">
+                    All Companies${allTotalCount > 0 ? ` (${allTotalCount})` : ''}
+                </button>
+            `);
+            
+            // A-Z buttons
+            for (let i = 65; i <= 90; i++) { // A to Z
+                const letter = String.fromCharCode(i);
+                const count = indexCounts[letter] || 0;
+                const isSelected = contactsCompanyIndexSelected === letter;
+                if (count > 0 || companiesByIndex[letter]) {
+                    indexButtons.push(`
+                        <button type="button" onclick="toggleContactCompanyIndex('${letter}')" 
+                                class="contact-company-index-btn px-3 py-1.5 text-sm font-medium rounded-lg transition-colors whitespace-nowrap ${
+                                    isSelected 
+                                        ? 'text-slate-700 bg-emerald-100 border-2 border-emerald-500' 
+                                        : 'text-slate-700 bg-white border border-slate-300 hover:bg-blue-50 hover:border-blue-500 hover:text-blue-700'
+                                }">
+                            ${letter}${count > 0 ? ` (${count})` : ''}
+                        </button>
+                    `);
+                }
+            }
+            
+            // 0-9 buttons
+            for (let i = 0; i <= 9; i++) {
+                const digit = String(i);
+                const count = indexCounts[digit] || 0;
+                const isSelected = contactsCompanyIndexSelected === digit;
+                if (count > 0 || companiesByIndex[digit]) {
+                    indexButtons.push(`
+                        <button type="button" onclick="toggleContactCompanyIndex('${digit}')" 
+                                class="contact-company-index-btn px-3 py-1.5 text-sm font-medium rounded-lg transition-colors whitespace-nowrap ${
+                                    isSelected 
+                                        ? 'text-slate-700 bg-emerald-100 border-2 border-emerald-500' 
+                                        : 'text-slate-700 bg-white border border-slate-300 hover:bg-blue-50 hover:border-blue-500 hover:text-blue-700'
+                                }">
+                            ${digit}${count > 0 ? ` (${count})` : ''}
+                        </button>
+                    `);
+                }
+            }
+            
+            indexContainer.innerHTML = indexButtons.join('');
+            
+            // Render company list for selected index
+            renderContactCompanyList();
+        }
+        
+        // Render company list for selected index (horizontal buttons like industries)
+        function renderContactCompanyList() {
+            const listContainer = document.getElementById('contacts-company-list');
+            if (!listContainer || !contactsCompanyIndexSelected) {
+                if (listContainer) listContainer.classList.add('hidden');
+                return;
+            }
+            
+            listContainer.classList.remove('hidden');
+            
+            // Filter companies by selected industry first
+            let filteredCompanies = contactsAllCompanies;
+            if (contactsSelectedIndustry) {
+                filteredCompanies = contactsAllCompanies.filter(company => {
+                    // Check if any contacts in this company belong to the selected industry
+                    return contacts.some(contact => {
+                        const contactCompanyId = contact.company_id || contact.company || contact.company_name;
+                        const companyId = company.id || company.name;
+                        const matchesCompany = contactCompanyId === companyId;
+                        const matchesIndustry = (contact.industry || '').toLowerCase() === contactsSelectedIndustry.toLowerCase();
+                        return matchesCompany && matchesIndustry;
+                    });
+                });
+            }
+            
+            // Get companies for selected index
+            const companiesForIndex = filteredCompanies.filter(company => {
+                const companyName = (company.name || '').trim();
+                if (!companyName) return false;
+                const firstChar = companyName.charAt(0).toUpperCase();
+                
+                if (/[A-Z]/.test(firstChar) || /[0-9]/.test(firstChar)) {
+                    return firstChar === contactsCompanyIndexSelected;
+                }
+                return false;
+            }).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+            
+            if (companiesForIndex.length === 0) {
+                listContainer.innerHTML = '<div class="p-2 text-sm text-slate-500">No companies found</div>';
+                return;
+            }
+            
+            // Calculate counts for each company
+            const companiesWithCounts = companiesForIndex.map(company => {
+                const companyId = company.id || company.name;
+                const totalInCompany = contacts.filter(c => {
+                    const contactCompanyId = c.company_id || c.company || c.company_name;
+                    return contactCompanyId === companyId;
+                }).length;
+                
+                return { ...company, totalCount: totalInCompany };
+            });
+            
+            // Render as horizontal buttons (like industries)
+            const html = companiesWithCounts.map(company => {
+                const companyId = company.id || company.name;
+                const isSelected = contactsSelectedCompanies.has(companyId);
+                const escapedName = escapeHtml(company.name);
+                const escapedIdForAttr = String(companyId).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                const countText = company.totalCount > 0 ? ` (${company.totalCount})` : '';
+                
+                return `
+                    <button type="button" 
+                            onclick="toggleContactCompany('${escapedIdForAttr}')" 
+                            class="contact-company-btn px-3 py-1.5 text-sm font-medium rounded-lg transition-colors whitespace-nowrap ${
+                                isSelected 
+                                    ? 'text-slate-700 bg-emerald-100 border-2 border-emerald-500' 
+                                    : 'text-slate-700 bg-white border border-slate-300 hover:bg-blue-50 hover:border-blue-500 hover:text-blue-700'
+                            }">
+                        ${escapedName}${countText}
+                    </button>
+                `;
+            }).join('');
+            
+            listContainer.innerHTML = `<div class="flex flex-wrap gap-2">${html}</div>`;
+        }
+        
+        // Toggle company index selection
+        function toggleContactCompanyIndex(indexKey) {
+            if (contactsCompanyIndexSelected === indexKey) {
+                // Clicking same index closes it
+                contactsCompanyIndexSelected = '';
+                const listContainer = document.getElementById('contacts-company-list');
+                if (listContainer) listContainer.classList.add('hidden');
+            } else {
+                contactsCompanyIndexSelected = indexKey;
+                renderContactCompanyList();
+            }
+            renderContactCompanyButtons();
+            filterContacts();
+        }
+        
+        // Render industry filter buttons for Contacts
+        function renderContactIndustryButtons() {
+            const container = document.getElementById('contacts-industry-buttons');
+            if (!container) return;
+            
+            const searchTerm = (document.getElementById('contact-search')?.value || '').toLowerCase();
+            
+            // Filter industries based on search
+            const filteredIndustries = contactsAllIndustries.filter(industry => {
+                if (searchTerm) {
+                    const industryNameMatch = industry.toLowerCase().includes(searchTerm);
+                    // Check if any contacts in this industry match the search
+                    const hasMatchingContacts = contacts.some(contact => {
+                        if ((contact.industry || '').toLowerCase() !== industry.toLowerCase()) return false;
+                        const name = (contact.name || '').toLowerCase();
+                        const email = (contact.email || '').toLowerCase();
+                        const phone = (contact.phone || '').toLowerCase();
+                        const role = (contact.role || '').toLowerCase();
+                        const company = ((contact.company || contact.company_name) || '').toLowerCase();
+                        const contactIndustry = (contact.industry || '').toLowerCase();
+                        const leadSource = (contact.lead_source || '').toLowerCase();
+                        return name.includes(searchTerm) || email.includes(searchTerm) || 
+                               phone.includes(searchTerm) || role.includes(searchTerm) || 
+                               company.includes(searchTerm) || contactIndustry.includes(searchTerm) ||
+                               leadSource.includes(searchTerm);
+                    });
+                    return industryNameMatch || hasMatchingContacts;
+                }
+                return true;
+            });
+            
+            // Calculate counts for each industry
+            const industriesWithCounts = filteredIndustries.map(industry => {
+                const totalInIndustry = contacts.filter(c => 
+                    (c.industry || '').toLowerCase() === industry.toLowerCase()
+                ).length;
+                const filteredInIndustry = contacts.filter(contact => {
+                    if ((contact.industry || '').toLowerCase() !== industry.toLowerCase()) return false;
+                    if (searchTerm) {
+                        const name = (contact.name || '').toLowerCase();
+                        const email = (contact.email || '').toLowerCase();
+                        const phone = (contact.phone || '').toLowerCase();
+                        const role = (contact.role || '').toLowerCase();
+                        const company = ((contact.company || contact.company_name) || '').toLowerCase();
+                        const contactIndustry = (contact.industry || '').toLowerCase();
+                        const leadSource = (contact.lead_source || '').toLowerCase();
+                        return name.includes(searchTerm) || email.includes(searchTerm) || 
+                               phone.includes(searchTerm) || role.includes(searchTerm) || 
+                               company.includes(searchTerm) || contactIndustry.includes(searchTerm) ||
+                               leadSource.includes(searchTerm);
+                    }
+                    return true;
+                }).length;
+                
+                return { name: industry, totalCount: totalInIndustry, filteredCount: filteredInIndustry };
+            });
+            
+            const isAllSelected = contactsSelectedIndustry === '';
+            const buttons = industriesWithCounts.map(industry => {
+                const isSelected = contactsSelectedIndustry === industry.name;
+                const escapedName = escapeHtml(industry.name);
+                const escapedNameForAttr = industry.name.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                const countText = industry.totalCount > 0 ? ` (${industry.filteredCount} of ${industry.totalCount})` : '';
+                return `
+                    <button type="button" 
+                            onclick="toggleContactIndustry('${escapedNameForAttr}')" 
+                            class="contact-industry-btn px-3 py-1.5 text-sm font-medium rounded-lg transition-colors whitespace-nowrap ${
+                                isSelected 
+                                    ? 'text-slate-700 bg-emerald-100 border-2 border-emerald-500' 
+                                    : 'text-slate-700 bg-white border border-slate-300 hover:bg-blue-50 hover:border-blue-500 hover:text-blue-700'
+                            }">
+                        ${escapedName}${countText}
+                    </button>
+                `;
+            }).join('');
+            
+            container.innerHTML = `
+                <button type="button" onclick="toggleContactIndustry('')" 
+                        class="contact-industry-btn px-3 py-1.5 text-sm font-medium rounded-lg transition-colors whitespace-nowrap ${
+                            isAllSelected 
+                                ? 'text-slate-700 bg-emerald-100 border-2 border-emerald-500' 
+                                : 'text-slate-700 bg-white border border-slate-300 hover:bg-blue-50 hover:border-blue-500 hover:text-blue-700'
+                        }">
+                    All Industries
+                </button>
+                ${buttons}
+            `;
+        }
+        
+        // Toggle company filter for Contacts
+        function toggleContactCompany(companyId) {
+            if (!companyId || companyId === '') {
+                contactsSelectedCompanies.clear();
+            } else {
+                if (contactsSelectedCompanies.has(companyId)) {
+                    contactsSelectedCompanies.delete(companyId);
+                } else {
+                    contactsSelectedCompanies.add(companyId);
+                }
+            }
+            renderContactCompanyButtons();
+            renderContactCompanyList(); // Update the company list to show selection state
+            filterContacts();
+        }
+        
+        // Toggle industry filter for Contacts
+        function toggleContactIndustry(industryName) {
+            contactsSelectedIndustry = industryName || '';
+            renderContactIndustryButtons();
+            // Re-render company index to reflect industry filter
+            renderContactCompanyButtons();
+            filterContacts();
+        }
+        
+        // Handle contact search input
+        function handleContactSearchInput(event) {
+            const searchInput = event.target;
+            const clearBtn = document.getElementById('contact-search-clear');
+            
+            // Show/hide clear button
+            if (searchInput.value.trim()) {
+                if (clearBtn) clearBtn.classList.remove('hidden');
+            } else {
+                if (clearBtn) clearBtn.classList.add('hidden');
+            }
+            
+            // Debounce search for better performance
+            if (contactSearchTimeout) {
+                clearTimeout(contactSearchTimeout);
+            }
+            
+            contactSearchTimeout = setTimeout(() => {
+                filterContacts();
+            }, 200);
+        }
+        
+        // Handle contact search keyup
+        function handleContactSearchKeyup(event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                if (contactSearchTimeout) {
+                    clearTimeout(contactSearchTimeout);
+                }
+                filterContacts();
+            }
+        }
+        
+        // Clear contact search
+        function clearContactSearch() {
+            const searchInput = document.getElementById('contact-search');
+            const clearBtn = document.getElementById('contact-search-clear');
+            if (searchInput) {
+                searchInput.value = '';
+                if (clearBtn) clearBtn.classList.add('hidden');
+                filterContacts();
             }
         }
 
         function filterContacts() {
-            const search = document.getElementById('contact-search').value.toLowerCase();
-            const companyFilter = document.getElementById('contact-company-filter').value;
-            const industry = document.getElementById('contact-industry-filter').value;
+            const search = document.getElementById('contact-search')?.value.toLowerCase().trim() || '';
+            
+            // Auto-select industry if search term exactly matches an industry name
+            if (search && contactsAllIndustries.length > 0) {
+                // Check for exact match first (case-insensitive)
+                const exactMatch = contactsAllIndustries.find(industry => 
+                    industry.toLowerCase() === search
+                );
+                
+                if (exactMatch) {
+                    // Auto-select the matching industry (only if not already selected to avoid unnecessary re-renders)
+                    if (contactsSelectedIndustry !== exactMatch) {
+                        contactsSelectedIndustry = exactMatch;
+                        renderContactIndustryButtons();
+                        renderContactCompanyButtons(); // Update company filter based on selected industry
+                    }
+                }
+                // Note: We don't auto-clear selection if search doesn't match - user can manually clear if needed
+            }
             
             contactsFiltered = contacts.filter(c => {
                 // Multi-field search: name, phone, email, company, industry, lead source
@@ -12059,21 +12766,30 @@ Project VANI Team`;
                     (c.name && c.name.toLowerCase().includes(search)) ||
                     (c.email && c.email && c.email.toLowerCase().includes(search)) ||
                     (c.phone && c.phone && c.phone.toLowerCase().includes(search)) ||
-                    (c.lead_source && c.lead_source.toLowerCase().includes(search)) ||
+                    (c.lead_source && c.lead_source && c.lead_source.toLowerCase().includes(search)) ||
                     (c.role && c.role.toLowerCase().includes(search)) ||
                     (c.company && c.company.toLowerCase().includes(search)) ||
-                    (c.company_name && c.company_name.toLowerCase().includes(search)) ||
+                    (c.company_name && c.company_name && c.company_name.toLowerCase().includes(search)) ||
                     (c.industry && c.industry.toLowerCase().includes(search));
                 
-                // Match company by ID or name (since filter might use either)
-                const matchCompany = !companyFilter || 
-                    c.company_id === companyFilter ||
-                    c.company === companyFilter ||
-                    c.company_name === companyFilter;
+                // Match company by ID or name
+                const contactCompanyId = c.company_id || c.company || c.company_name;
+                const matchCompany = contactsSelectedCompanies.size === 0 || 
+                    contactsSelectedCompanies.has(contactCompanyId) ||
+                    contactsSelectedCompanies.has(c.company_id) ||
+                    contactsSelectedCompanies.has(c.company) ||
+                    contactsSelectedCompanies.has(c.company_name);
                 
-                const matchIndustry = !industry || c.industry === industry;
+                const matchIndustry = !contactsSelectedIndustry || 
+                    (c.industry && c.industry.toLowerCase() === contactsSelectedIndustry.toLowerCase());
+                
                 return matchSearch && matchCompany && matchIndustry;
             });
+            
+            // Update filter buttons to reflect search results
+            renderContactCompanyButtons();
+            renderContactCompanyList(); // Update company list if index is selected
+            renderContactIndustryButtons();
             
             // Reset to first page when filtering
             contactsPage = 1;
@@ -14095,7 +14811,7 @@ Project VANI Team`;
                     companiesFiltered = companies;
                     companiesPage = 1;
                     renderCompanies();
-                    loadCompanyFilters();
+                    loadCompanyIndustries();
                     
                     // Show industry notice for industry admins
                     showIndustryNoticeForCompanies();
@@ -14112,37 +14828,6 @@ Project VANI Team`;
             }
         }
 
-        function loadCompanyFilters() {
-            const industryFilter = document.getElementById('company-industry-filter');
-            if (industryFilter) {
-                const industries = [...new Set(companies.map(c => c.industry).filter(Boolean))].sort();
-                industryFilter.innerHTML = '<option value="">All Industries</option>';
-                industries.forEach(industry => {
-                    const option = document.createElement('option');
-                    option.value = industry;
-                    option.textContent = industry;
-                    industryFilter.appendChild(option);
-                });
-            }
-        }
-
-        function filterCompanies() {
-            const search = document.getElementById('company-search').value.toLowerCase();
-            const industry = document.getElementById('company-industry-filter').value;
-            
-            companiesFiltered = companies.filter(c => {
-                const matchSearch = !search || 
-                    (c.name && c.name.toLowerCase().includes(search)) ||
-                    (c.domain && c.domain.toLowerCase().includes(search)) ||
-                    (c.industry && c.industry.toLowerCase().includes(search));
-                
-                const matchIndustry = !industry || c.industry === industry;
-                return matchSearch && matchIndustry;
-            });
-            
-            companiesPage = 1;
-            renderCompanies();
-        }
 
         // --- ADMIN FUNCTIONS (SUPER USER ONLY) ---
         async function switchAdminTab(tabId) {
