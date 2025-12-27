@@ -16,6 +16,12 @@ class IndustryPersonaContext:
     use_case_examples: List[str]
     value_proposition_template: str
     common_use_cases: List[str]
+    # Industry-specific metrics for personalization
+    cost_per_visit: Optional[float] = None  # Cost per human visit (e.g., ₹300 for FMCG)
+    default_aov: Optional[float] = None  # Default Average Order Value
+    store_count_min: Optional[int] = None  # Minimum store count for simulator
+    store_count_max: Optional[int] = None  # Maximum store count for simulator
+    coverage_gap_percentage: Optional[int] = None  # Coverage gap percentage (e.g., 80% for FMCG)
 
 
 class IndustryPersonaMapping:
@@ -84,7 +90,12 @@ class IndustryPersonaMapping:
                 'New product launches',
                 'Route-to-market coverage',
                 'Rural distribution'
-            ]
+            ],
+            cost_per_visit=300.00,
+            default_aov=2000.00,
+            store_count_min=1000,
+            store_count_max=100000,
+            coverage_gap_percentage=80
         ),
         
         'Activation Concierge': IndustryPersonaContext(
@@ -112,7 +123,12 @@ class IndustryPersonaMapping:
                 'Product activation',
                 'Service setup',
                 'User onboarding'
-            ]
+            ],
+            cost_per_visit=500.00,
+            default_aov=5000.00,
+            store_count_min=10000,
+            store_count_max=1000000,
+            coverage_gap_percentage=60
         ),
         
         'Global Sales Associate': IndustryPersonaContext(
@@ -140,7 +156,12 @@ class IndustryPersonaMapping:
                 'Supplier coordination',
                 'Global inquiry handling',
                 'Vendor management'
-            ]
+            ],
+            cost_per_visit=1000.00,
+            default_aov=10000.00,
+            store_count_min=500,
+            store_count_max=50000,
+            coverage_gap_percentage=70
         ),
         
         'Logistics Automator': IndustryPersonaContext(
@@ -168,7 +189,12 @@ class IndustryPersonaMapping:
                 'Logistics automation',
                 'Documentation management',
                 'Multi-party coordination'
-            ]
+            ],
+            cost_per_visit=800.00,
+            default_aov=7500.00,
+            store_count_min=2000,
+            store_count_max=200000,
+            coverage_gap_percentage=65
         ),
         
         'Patient Engagement Assistant': IndustryPersonaContext(
@@ -196,7 +222,12 @@ class IndustryPersonaMapping:
                 'Patient onboarding',
                 'Health check reminders',
                 'Care coordination'
-            ]
+            ],
+            cost_per_visit=400.00,
+            default_aov=3000.00,
+            store_count_min=5000,
+            store_count_max=500000,
+            coverage_gap_percentage=50
         ),
         
         'Student Onboarding Concierge': IndustryPersonaContext(
@@ -224,7 +255,12 @@ class IndustryPersonaMapping:
                 'Documentation collection',
                 'Fee payment',
                 'Course enrollment'
-            ]
+            ],
+            cost_per_visit=350.00,
+            default_aov=2500.00,
+            store_count_min=2000,
+            store_count_max=200000,
+            coverage_gap_percentage=55
         ),
         
         'Lead Qualification Specialist': IndustryPersonaContext(
@@ -252,7 +288,12 @@ class IndustryPersonaMapping:
                 'Site visit scheduling',
                 'Documentation collection',
                 'Buyer qualification'
-            ]
+            ],
+            cost_per_visit=600.00,
+            default_aov=8000.00,
+            store_count_min=1000,
+            store_count_max=100000,
+            coverage_gap_percentage=65
         ),
         
         'Sales Development Rep': IndustryPersonaContext(
@@ -280,7 +321,12 @@ class IndustryPersonaMapping:
                 'Trial activation',
                 'User onboarding',
                 'Follow-up coordination'
-            ]
+            ],
+            cost_per_visit=450.00,
+            default_aov=6000.00,
+            store_count_min=3000,
+            store_count_max=300000,
+            coverage_gap_percentage=60
         ),
     }
     
@@ -337,7 +383,12 @@ class IndustryPersonaMapping:
                         pain_points=pain_points or [],
                         use_case_examples=use_case_examples or [],
                         value_proposition_template=mapping.get('value_proposition_template', ''),
-                        common_use_cases=common_use_cases or []
+                        common_use_cases=common_use_cases or [],
+                        cost_per_visit=float(mapping.get('cost_per_visit', 0)) if mapping.get('cost_per_visit') else None,
+                        default_aov=float(mapping.get('default_aov', 0)) if mapping.get('default_aov') else None,
+                        store_count_min=int(mapping.get('store_count_min', 0)) if mapping.get('store_count_min') else None,
+                        store_count_max=int(mapping.get('store_count_max', 0)) if mapping.get('store_count_max') else None,
+                        coverage_gap_percentage=int(mapping.get('coverage_gap_percentage', 0)) if mapping.get('coverage_gap_percentage') else None
                     )
             except Exception as e:
                 logger.warning(f"Error fetching persona mapping from database for {industry}: {e}. Falling back to defaults.")
@@ -368,6 +419,57 @@ class IndustryPersonaMapping:
         """Get use case examples for an industry"""
         context = cls.get_industry_context(industry, supabase_client=supabase_client)
         return context.use_case_examples if context else []
+    
+    @classmethod
+    def get_industry_metrics(cls, industry: str, supabase_client=None) -> Dict[str, Any]:
+        """Get industry-specific metrics for personalization"""
+        context = cls.get_industry_context(industry, supabase_client=supabase_client)
+        if not context:
+            return {}
+        
+        return {
+            'cost_per_visit': context.cost_per_visit,
+            'default_aov': context.default_aov,
+            'store_count_min': context.store_count_min,
+            'store_count_max': context.store_count_max,
+            'coverage_gap_percentage': context.coverage_gap_percentage
+        }
+    
+    @classmethod
+    def get_extended_context(cls, industry: str, persona: Optional[str] = None, target: Optional[Dict[str, Any]] = None, supabase_client=None) -> Dict[str, Any]:
+        """Get extended context for personalization including metrics and target-specific data"""
+        context = cls.get_industry_context(industry, supabase_client=supabase_client)
+        if not context:
+            return {}
+        
+        extended = {
+            'industry': context.industry,
+            'vani_persona': context.vani_persona,
+            'persona_description': context.persona_description,
+            'pain_points': context.pain_points,
+            'use_case_examples': context.use_case_examples,
+            'value_proposition_template': context.value_proposition_template,
+            'common_use_cases': context.common_use_cases,
+            'metrics': {
+                'cost_per_visit': context.cost_per_visit,
+                'default_aov': context.default_aov,
+                'store_count_min': context.store_count_min,
+                'store_count_max': context.store_count_max,
+                'coverage_gap_percentage': context.coverage_gap_percentage
+            }
+        }
+        
+        # Add target-specific context if provided
+        if target:
+            extended['target'] = {
+                'company_name': target.get('company_name', ''),
+                'contact_name': target.get('contact_name', ''),
+                'role': target.get('role', ''),
+                'pain_point': target.get('pain_point', ''),
+                'pitch_angle': target.get('pitch_angle', '')
+            }
+        
+        return extended
     
     @classmethod
     def get_value_proposition_template(cls, industry: str, supabase_client=None) -> str:

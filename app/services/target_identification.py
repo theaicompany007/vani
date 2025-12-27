@@ -192,6 +192,8 @@ class TargetIdentificationService:
         recommendations = []
         batch_size = 10  # Process contacts in batches to avoid token limits
         
+        # Process ALL contacts first, then filter and rank
+        # This ensures we don't miss contacts that might rank higher after full analysis
         for i in range(0, len(contacts), batch_size):
             batch = contacts[i:i + batch_size]
             batch_recommendations = self._analyze_contact_batch(
@@ -202,9 +204,9 @@ class TargetIdentificationService:
                 gemini_insights
             )
             recommendations.extend(batch_recommendations)
-            
-            if len(recommendations) >= limit:
-                break
+            logger.debug(f"Processed batch {i//batch_size + 1}: {len(batch_recommendations)} recommendations from {len(batch)} contacts")
+        
+        logger.info(f"Total recommendations generated: {len(recommendations)} from {len(contacts)} contacts")
         
         # Filter by min_seniority and sort by confidence
         filtered = [
@@ -212,12 +214,23 @@ class TargetIdentificationService:
             if r.seniority_score >= min_seniority
         ]
         
+        logger.info(f"After min_seniority filter (>= {min_seniority}): {len(filtered)} recommendations")
+        
+        # Log specific contacts for debugging (e.g., Nikhil Kumar)
+        for r in recommendations[:50]:  # Check first 50 for debugging
+            if 'nikhil' in r.contact_name.lower() or 'kumar' in r.contact_name.lower():
+                logger.info(f"Found Nikhil Kumar: seniority={r.seniority_score:.2f}, confidence={r.confidence_score:.2f}, overall={r.overall_score:.2f}, matches_min_seniority={r.seniority_score >= min_seniority}")
+        
         # Sort by confidence score (descending)
         sorted_recommendations = sorted(
             filtered,
             key=lambda x: x.confidence_score,
             reverse=True
         )
+        
+        # Log top recommendations for debugging
+        if sorted_recommendations:
+            logger.info(f"Top 5 recommendations: {[(r.contact_name, r.confidence_score, r.seniority_score) for r in sorted_recommendations[:5]]}")
         
         return sorted_recommendations[:limit]
     

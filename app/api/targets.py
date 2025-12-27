@@ -55,7 +55,8 @@ def list_targets():
         offset = int(request.args.get('offset', 0))
         
         # Build query with industry filtering - include industry name via JOIN
-        query = supabase.table('targets').select('*, contacts(industry), companies(industry), industries(id, name)')
+        # Use LEFT JOIN to get related data in a single query
+        query = supabase.table('targets').select('*, contacts(id, industry, name, email, phone, linkedin), companies(id, industry, name, domain), industries(id, name)')
         
         # For industry filtering, we'll filter after fetching to handle derived industry from contacts/companies
         # But we can optimize by pre-filtering on industry_id if available
@@ -66,8 +67,55 @@ def list_targets():
         if company:
             query = query.ilike('company_name', f'%{company}%')
         
-        query = query.order('created_at', desc=True).limit(limit * 2).offset(offset)  # Fetch more to filter
+        # Pre-filter by industry_id if available (for performance)
+        if not is_super_user and user_industry_id and not industry_param:
+            query = query.eq('industry_id', user_industry_id)
+        
+        query = query.order('company_name', desc=False).limit(limit * 2).offset(offset)  # Ascending alphabetical order
         response = query.execute()
+        
+        # Batch fetch all unique industry names for targets that need them
+        # First, collect all unique industry IDs and names we need to look up
+        industry_ids_to_fetch = set()
+        industry_names_to_fetch = set()
+        
+        for t in response.data:
+            if t.get('industry_id'):
+                industry_ids_to_fetch.add(str(t['industry_id']))
+            if t.get('contacts') and t['contacts'].get('industry'):
+                industry_names_to_fetch.add(t['contacts']['industry'].strip())
+            if t.get('companies') and t['companies'].get('industry'):
+                industry_names_to_fetch.add(t['companies']['industry'].strip())
+        
+        # Batch fetch industries by ID
+        industry_map_by_id = {}
+        if industry_ids_to_fetch:
+            try:
+                industry_ids_list = list(industry_ids_to_fetch)
+                # Fetch in batches of 100 (Supabase limit)
+                for i in range(0, len(industry_ids_list), 100):
+                    batch = industry_ids_list[i:i+100]
+                    industry_response = supabase.table('industries').select('id, name').in_('id', batch).execute()
+                    if industry_response.data:
+                        for ind in industry_response.data:
+                            industry_map_by_id[str(ind['id'])] = ind['name']
+            except Exception as e:
+                logger.warning(f"Error batch fetching industries by ID: {e}")
+        
+        # Batch fetch industries by name (for contact/company derived industries)
+        industry_map_by_name = {}
+        if industry_names_to_fetch:
+            try:
+                # Fetch all industries and match by name (case-insensitive)
+                all_industries_response = supabase.table('industries').select('id, name').execute()
+                if all_industries_response.data:
+                    for ind in all_industries_response.data:
+                        ind_name_lower = ind['name'].lower().strip()
+                        for lookup_name in industry_names_to_fetch:
+                            if lookup_name.lower() == ind_name_lower:
+                                industry_map_by_name[lookup_name] = {'id': str(ind['id']), 'name': ind['name']}
+            except Exception as e:
+                logger.warning(f"Error batch fetching industries by name: {e}")
         
         # Deduplicate at database level: group by company_name + contact_name + role
         seen_targets = {}  # key: (company_name, contact_name, role) -> target
@@ -78,7 +126,6 @@ def list_targets():
             try:
                 # Check industry_id directly from raw response first (before Target model conversion)
                 raw_industry_id = t.get('industry_id')
-                logger.debug(f"Raw target data: company_name={t.get('company_name')}, industry_id={raw_industry_id}, type={type(raw_industry_id)}")
                 
                 target = Target.from_dict(t)
                 target_dict = target.to_dict()
@@ -88,27 +135,22 @@ def list_targets():
                 # First check raw data (most reliable)
                 if raw_industry_id:
                     target_industry_id = str(raw_industry_id)
-                    logger.debug(f"Target {target_dict.get('company_name', 'Unknown')}: Using raw industry_id={target_industry_id}")
                 elif target_dict.get('industry_id'):
                     target_industry_id = str(target_dict['industry_id'])
-                    logger.debug(f"Target {target_dict.get('company_name', 'Unknown')}: Using target_dict industry_id={target_industry_id}")
                 elif t.get('contacts') and t['contacts'].get('industry'):
-                    # Get industry from contacts table
-                    contact_industry = t['contacts']['industry']
-                    # Look up industry_id from industry name
-                    industry_lookup = supabase.table('industries').select('id').ilike('name', f'%{contact_industry}%').limit(1).execute()
-                    if industry_lookup.data:
-                        target_industry_id = str(industry_lookup.data[0]['id'])
-                        logger.debug(f"Target {target_dict.get('company_name', 'Unknown')}: Derived industry_id={target_industry_id} from contact industry={contact_industry}")
+                    # Get industry from contacts table - use batch lookup
+                    contact_industry = t['contacts']['industry'].strip()
+                    industry_info = industry_map_by_name.get(contact_industry)
+                    if industry_info:
+                        target_industry_id = industry_info['id']
+                        target_dict['industry'] = industry_info['name']
                 elif t.get('companies') and t['companies'].get('industry'):
-                    # Get industry from companies table
-                    company_industry = t['companies']['industry']
-                    industry_lookup = supabase.table('industries').select('id').ilike('name', f'%{company_industry}%').limit(1).execute()
-                    if industry_lookup.data:
-                        target_industry_id = str(industry_lookup.data[0]['id'])
-                        logger.debug(f"Target {target_dict.get('company_name', 'Unknown')}: Derived industry_id={target_industry_id} from company industry={company_industry}")
-                else:
-                    logger.debug(f"Target {target_dict.get('company_name', 'Unknown')}: No industry_id found (target.industry_id={target_dict.get('industry_id')}, contact={bool(t.get('contacts'))}, company={bool(t.get('companies'))})")
+                    # Get industry from companies table - use batch lookup
+                    company_industry = t['companies']['industry'].strip()
+                    industry_info = industry_map_by_name.get(company_industry)
+                    if industry_info:
+                        target_industry_id = industry_info['id']
+                        target_dict['industry'] = industry_info['name']
                 
                 # Apply industry filter
                 if is_super_user:
@@ -118,57 +160,44 @@ def list_targets():
                         if target_industry_id:
                             # Check if target's industry_id matches the requested industry
                             if str(target_industry_id) != str(industry_param):
-                                logger.debug(f"Target {target_dict.get('company_name', 'Unknown')}: Skipped - industry_id mismatch (target={target_industry_id}, requested={industry_param})")
                                 continue
                         else:
                             # If no industry_id on target and super user requested specific industry, skip
-                            logger.debug(f"Target {target_dict.get('company_name', 'Unknown')}: Skipped - no industry_id (super user requested industry={industry_param})")
                             continue
-                        logger.debug(f"Target {target_dict.get('company_name', 'Unknown')}: PASSED super user filter with industry_param (industry_id={target_industry_id})")
-                    else:
-                        # Super user without industry filter: Show all targets
-                        logger.debug(f"Target {target_dict.get('company_name', 'Unknown')}: PASSED super user filter (no industry filter, showing all)")
                 elif is_industry_admin and user_industry_id:
                     # Industry admin: Must match their industry
-                    if not target_industry_id:
-                        logger.debug(f"Target {target_dict.get('company_name', 'Unknown')}: Skipped - no industry_id (industry admin filter)")
+                    if not target_industry_id or target_industry_id != user_industry_id:
                         continue
-                    if target_industry_id != user_industry_id:
-                        logger.debug(f"Target {target_dict.get('company_name', 'Unknown')}: Skipped - industry_id mismatch (target={target_industry_id}, user={user_industry_id})")
-                        continue
-                    logger.debug(f"Target {target_dict.get('company_name', 'Unknown')}: PASSED industry admin filter (industry_id={target_industry_id})")
                 elif user_industry_id:
                     # Regular user with active_industry_id: Filter by active industry
                     # Only show targets that have industry_id matching active industry
                     if not target_industry_id or target_industry_id != user_industry_id:
-                        logger.debug(f"Target {target_dict.get('company_name', 'Unknown')}: Skipped - industry_id mismatch (target={target_industry_id}, user={user_industry_id})")
                         continue
-                    logger.debug(f"Target {target_dict.get('company_name', 'Unknown')}: PASSED regular user filter (industry_id={target_industry_id})")
                 
-                # Enrich with contact/company data if linked
-                if target_dict.get('contact_id'):
-                    contact_response = supabase.table('contacts').select('*').eq('id', target_dict['contact_id']).limit(1).execute()
-                    if contact_response.data:
-                        target_dict['contact'] = contact_response.data[0]
+                # Enrich with contact/company data - already included in JOIN, just map it
+                if t.get('contacts'):
+                    target_dict['contact'] = t['contacts']
+                    # Also populate contact fields directly for easier access
+                    if isinstance(t['contacts'], dict):
+                        target_dict['contact_name'] = target_dict.get('contact_name') or t['contacts'].get('name')
+                        target_dict['email'] = target_dict.get('email') or t['contacts'].get('email')
+                        target_dict['phone'] = target_dict.get('phone') or t['contacts'].get('phone')
+                        target_dict['linkedin_url'] = target_dict.get('linkedin_url') or t['contacts'].get('linkedin')
                 
-                if target_dict.get('company_id'):
-                    company_response = supabase.table('companies').select('*').eq('id', target_dict['company_id']).limit(1).execute()
-                    if company_response.data:
-                        target_dict['company'] = company_response.data[0]
+                if t.get('companies'):
+                    target_dict['company'] = t['companies']
                 
-                # Add industry information - ALWAYS fetch industry name if industry_id exists
-                if target_industry_id:
+                # Add industry information - use batch-fetched data or JOIN result
+                if t.get('industries'):
+                    industry_data = t['industries']
+                    if isinstance(industry_data, dict):
+                        target_dict['industry'] = industry_data.get('name')
+                        target_dict['industry_id'] = target_dict.get('industry_id') or industry_data.get('id')
+                elif target_industry_id:
                     target_dict['industry_id'] = target_industry_id
-                    # Always fetch industry name to ensure it's available
-                    try:
-                        industry_response = supabase.table('industries').select('id, name').eq('id', target_industry_id).limit(1).execute()
-                        if industry_response.data and len(industry_response.data) > 0:
-                            target_dict['industry'] = industry_response.data[0]['name']
-                            logger.debug(f"Target {target_dict.get('company_name', 'Unknown')}: Added industry name '{target_dict['industry']}' from industry_id={target_industry_id}")
-                        else:
-                            logger.warning(f"Target {target_dict.get('company_name', 'Unknown')}: industry_id={target_industry_id} found but no industry name in database")
-                    except Exception as e:
-                        logger.error(f"Error fetching industry name for target {target_dict.get('company_name', 'Unknown')}: {e}")
+                    # Use batch-fetched industry name
+                    if target_industry_id in industry_map_by_id:
+                        target_dict['industry'] = industry_map_by_id[target_industry_id]
                 
                 # Deduplication: Check if we've seen this company+contact+role combination
                 company_name = target_dict.get('company_name', '').lower().strip()
@@ -187,9 +216,6 @@ def list_targets():
                         targets.remove(existing)
                         targets.append(target_dict)
                         seen_targets[dedup_key] = target_dict
-                        logger.debug(f"Replaced duplicate target: {company_name} - {contact_name} ({role})")
-                    else:
-                        logger.debug(f"Skipped duplicate target: {company_name} - {contact_name} ({role})")
                 else:
                     # New unique target
                     targets.append(target_dict)
@@ -267,8 +293,8 @@ def create_target():
                 if not contact_industry and contact_data.get('companies'):
                     contact_industry = contact_data['companies'].get('industry')
                 if contact_industry:
-                    # Look up industry_id from industry name
-                    industry_lookup = supabase.table('industries').select('id').ilike('name', f'%{contact_industry}%').limit(1).execute()
+                    # Look up industry_id from industry name (exact case-insensitive match)
+                    industry_lookup = supabase.table('industries').select('id').ilike('name', contact_industry.strip()).limit(1).execute()
                     if industry_lookup.data:
                         target_industry_id = str(industry_lookup.data[0]['id'])
         # 3. Company's industry (if company_id provided)
@@ -276,7 +302,8 @@ def create_target():
             company_response = supabase.table('companies').select('industry').eq('id', data['company_id']).limit(1).execute()
             if company_response.data and company_response.data[0].get('industry'):
                 company_industry = company_response.data[0]['industry']
-                industry_lookup = supabase.table('industries').select('id').ilike('name', f'%{company_industry}%').limit(1).execute()
+                # Look up industry_id from industry name (exact case-insensitive match)
+                industry_lookup = supabase.table('industries').select('id').ilike('name', company_industry.strip()).limit(1).execute()
                 if industry_lookup.data:
                     target_industry_id = str(industry_lookup.data[0]['id'])
         # 4. Explicit industry_id from request
@@ -321,19 +348,29 @@ def create_target():
 @require_auth
 @require_use_case('target_management')
 def get_target(target_id):
-    """Get a specific target by ID"""
+    """Get a specific target by ID with contact and company details"""
     try:
         supabase = get_supabase_client(current_app)
         if not supabase:
             return jsonify({'error': 'Supabase not configured'}), 503
         
-        response = supabase.table('targets').select('*').eq('id', target_id).execute()
+        # Include contact and company details for industry mismatch detection
+        response = supabase.table('targets').select('*, contacts(industry, id, name), companies(industry, id, name)').eq('id', target_id).execute()
         
         if response.data:
-            target = Target.from_dict(response.data[0])
+            target_data = response.data[0]
+            target = Target.from_dict(target_data)
+            target_dict = target.to_dict()
+            
+            # Include contact and company data for mismatch detection
+            if 'contacts' in target_data and target_data['contacts']:
+                target_dict['contact'] = target_data['contacts']
+            if 'companies' in target_data and target_data['companies']:
+                target_dict['company'] = target_data['companies']
+            
             return jsonify({
                 'success': True,
-                'target': target.to_dict()
+                'target': target_dict
             })
         else:
             return jsonify({'error': 'Target not found'}), 404
@@ -484,11 +521,13 @@ def create_target_from_contact():
         if is_industry_admin and user_industry_id:
             target_industry_id = user_industry_id
         elif contact.get('industry'):
-            industry_lookup = supabase.table('industries').select('id').ilike('name', f'%{contact["industry"]}%').limit(1).execute()
+            # Look up industry_id from industry name (exact case-insensitive match)
+            industry_lookup = supabase.table('industries').select('id').ilike('name', contact['industry'].strip()).limit(1).execute()
             if industry_lookup.data:
                 target_industry_id = str(industry_lookup.data[0]['id'])
         elif company.get('industry'):
-            industry_lookup = supabase.table('industries').select('id').ilike('name', f'%{company["industry"]}%').limit(1).execute()
+            # Look up industry_id from industry name (exact case-insensitive match)
+            industry_lookup = supabase.table('industries').select('id').ilike('name', company['industry'].strip()).limit(1).execute()
             if industry_lookup.data:
                 target_industry_id = str(industry_lookup.data[0]['id'])
         
@@ -779,12 +818,14 @@ def delete_target(target_id):
                 # Derive from contact/company
                 if target_data.get('contacts') and target_data['contacts'].get('industry'):
                     contact_industry = target_data['contacts']['industry']
-                    industry_lookup = supabase.table('industries').select('id').ilike('name', f'%{contact_industry}%').limit(1).execute()
+                    # Look up industry_id from industry name (exact case-insensitive match)
+                    industry_lookup = supabase.table('industries').select('id').ilike('name', contact_industry.strip()).limit(1).execute()
                     if industry_lookup.data:
                         target_industry_id = str(industry_lookup.data[0]['id'])
                 elif target_data.get('companies') and target_data['companies'].get('industry'):
                     company_industry = target_data['companies']['industry']
-                    industry_lookup = supabase.table('industries').select('id').ilike('name', f'%{company_industry}%').limit(1).execute()
+                    # Look up industry_id from industry name (exact case-insensitive match)
+                    industry_lookup = supabase.table('industries').select('id').ilike('name', company_industry.strip()).limit(1).execute()
                     if industry_lookup.data:
                         target_industry_id = str(industry_lookup.data[0]['id'])
             
@@ -906,6 +947,12 @@ def ai_identify_targets():
         elif preset == 'c_level_only':
             min_seniority = 0.9
             limit = 10
+        elif preset == 'mid_level':
+            min_seniority = 0.5
+            limit = 10
+        elif preset == 'volume_search':
+            min_seniority = 0.4
+            limit = 50
         
         # Get current user for industry access control and saving results
         user = get_current_user()
@@ -958,19 +1005,29 @@ def ai_identify_targets():
                 contacts_query = contacts_query.ilike('industry', f'%{industry_name}%')
                 logger.debug(f"Filtering contacts by single industry: {industry_name} (case-insensitive ilike)")
             else:
-                # Multiple industries: Don't filter at query level, fetch all and filter in Python
-                # This ensures we get contacts matching ANY of the selected industries
-                logger.debug(f"Multiple industries selected: {industries}. Will fetch all contacts and filter in Python.")
-                # This ensures we get contacts that match ANY of the selected industries
-                logger.debug(f"Multiple industries selected: {industries}. Will fetch all contacts and filter in Python.")
-                # Don't add industry filter - we'll filter in Python to match any industry
+                # Multiple industries: Use OR filter to match ANY of the selected industries
+                # Build OR condition: industry.ilike.%Travel% OR industry.ilike.%Insurance% OR industry.ilike.%Automotive%
+                or_conditions = []
+                for ind in industries:
+                    ind_clean = ind.strip()
+                    # Use case-insensitive partial match for each industry
+                    or_conditions.append(f"industry.ilike.%{ind_clean}%")
+                
+                if or_conditions:
+                    # Use PostgREST OR syntax
+                    or_filter = ','.join(or_conditions)
+                    contacts_query = contacts_query.or_(or_filter)
+                    logger.debug(f"Multiple industries selected: {industries}. Using OR filter: {or_filter}")
+                else:
+                    logger.debug(f"Multiple industries selected: {industries}. Will fetch all contacts and filter in Python.")
         
         # Increase limit significantly to ensure we get enough contacts, especially for single industry searches
         # For single industry, fetch more to account for potential mismatches in database
         if len(industries) == 1:
             fetch_limit = max(limit * 10, 500)  # At least 500 contacts for single industry search
         else:
-            fetch_limit = limit * 5 if (is_super_user or len(industries) > 1) else limit * 3
+            # For multiple industries, fetch more to ensure we get contacts from all selected industries
+            fetch_limit = max(limit * 10, 1000)  # At least 1000 contacts for multiple industries
         contacts_query = contacts_query.limit(fetch_limit)
         logger.debug(f"Set fetch_limit to {fetch_limit} for industries={industries}")
         
@@ -1249,37 +1306,69 @@ def ai_identify_targets():
                 contact_words = contact_industry_lower.split()
                 company_words = company_industry_lower.split() if company_industry_lower else []
                 
-                # Flexible matching: check multiple variations
+                # PRIORITY 1: Exact case-insensitive match (most reliable - handles "travel" == "Travel")
+                # Check this FIRST and break immediately if matched
+                if contact_industry_lower == ind_clean:
+                    matches = True
+                    matched_industry = ind
+                    logger.debug(f"Contact {c.get('name', 'Unknown')} matches industry '{ind}' (EXACT: '{contact_industry}' == '{ind}')")
+                    break
+                
+                if company_industry_lower and company_industry_lower == ind_clean:
+                    matches = True
+                    matched_industry = ind
+                    logger.debug(f"Contact {c.get('name', 'Unknown')} matches industry '{ind}' (EXACT from company: '{company_industry}' == '{ind}')")
+                    break
+                
+                # PRIORITY 2: Normalized exact match (handles variations like "travel" == "Travel" after normalization)
+                if contact_normalized == ind_normalized:
+                    matches = True
+                    matched_industry = ind
+                    logger.debug(f"Contact {c.get('name', 'Unknown')} matches industry '{ind}' (NORMALIZED exact: '{contact_industry}')")
+                    break
+                
+                if company_normalized and company_normalized == ind_normalized:
+                    matches = True
+                    matched_industry = ind
+                    logger.debug(f"Contact {c.get('name', 'Unknown')} matches industry '{ind}' (NORMALIZED exact from company: '{company_industry}')")
+                    break
+                
+                # PRIORITY 3: Substring and word-based matching (flexible matching)
                 match_checks = [
-                    ind_clean in contact_industry_lower,
-                    contact_industry_lower in ind_clean,
-                    contact_industry_lower == ind_clean,
-                    ind_normalized in contact_normalized,
-                    contact_normalized in ind_normalized,
-                    contact_normalized == ind_normalized,
-                    # Word-based matching: check if key words from requested industry appear in contact industry
-                    any(word in contact_industry_lower for word in ind_words) if ind_words else False,
-                    any(word in ind_clean for word in contact_words if len(word) > 3) if contact_words else False,
+                    # Substring matches
+                    ind_clean in contact_industry_lower,  # "travel" in "travel & tourism"
+                    contact_industry_lower in ind_clean,  # "travel" in "travel and hospitality"
+                    ind_normalized in contact_normalized,  # Normalized substring
+                    contact_normalized in ind_normalized,  # Reverse normalized substring
                 ]
+                
+                # Word-based matching: check if key words from requested industry appear in contact industry
+                if ind_words:
+                    match_checks.extend([
+                        any(word in contact_industry_lower for word in ind_words),  # Any key word in contact industry
+                        any(word in ind_clean for word in contact_words if len(word) > 3),  # Any contact word in industry
+                    ])
                 
                 # Also check company industry if available
                 if company_industry_lower:
                     match_checks.extend([
+                        # Substring matches from company
                         ind_clean in company_industry_lower,
                         company_industry_lower in ind_clean,
-                        company_industry_lower == ind_clean,
                         ind_normalized in company_normalized,
                         company_normalized in ind_normalized,
-                        company_normalized == ind_normalized,
-                        # Word-based matching for company industry
-                        any(word in company_industry_lower for word in ind_words) if ind_words else False,
-                        any(word in ind_clean for word in company_words if len(word) > 3) if company_words else False,
                     ])
+                    # Word-based matching for company industry
+                    if ind_words:
+                        match_checks.extend([
+                            any(word in company_industry_lower for word in ind_words),
+                            any(word in ind_clean for word in company_words if len(word) > 3),
+                        ])
                 
                 if any(match_checks):
                     matches = True
                     matched_industry = ind
-                    logger.debug(f"Contact {c.get('name', 'Unknown')} matches industry '{ind}' (contact industry: '{contact_industry}', company industry: '{company_industry}')")
+                    logger.debug(f"Contact {c.get('name', 'Unknown')} matches industry '{ind}' (FLEXIBLE: contact: '{contact_industry}', company: '{company_industry}')")
                     break
             
             if not matches:
@@ -1449,14 +1538,22 @@ def ai_identify_targets():
                     insert_data['report'] = report
                     insert_data['report_generated_at'] = datetime.utcnow().isoformat()
                 
-                result = supabase.table('ai_target_search_results').insert(insert_data).execute()
-                
-                if result.data:
-                    search_id = str(result.data[0]['id'])
+                # Save search result (non-blocking - don't fail the request if this fails)
+                try:
+                    result = supabase.table('ai_target_search_results').insert(insert_data).execute()
+                    if result.data:
+                        search_id = str(result.data[0]['id'])
+                        logger.info(f"Successfully saved search result with ID: {search_id}")
+                except Exception as save_error:
+                    # Log error but don't fail the request - saving is non-critical
+                    logger.warning(f"Failed to save search result (non-critical): {save_error}")
+                    # Don't log full traceback for connection errors to reduce noise
+                    if 'disconnected' not in str(save_error).lower() and 'connection' not in str(save_error).lower():
+                        import traceback
+                        logger.debug(traceback.format_exc())
             except Exception as save_error:
-                logger.error(f"Failed to save search result: {save_error}")
-                import traceback
-                logger.error(traceback.format_exc())
+                # Outer exception handler for any other errors in the save block
+                logger.warning(f"Error in save block (non-critical): {save_error}")
         
         response_data = {
             'success': True,
@@ -1593,16 +1690,32 @@ def ai_create_targets():
                     gemini_insights
                 )
                 
-                # Auto-assign industry_id - prioritize user's current industry
+                # Auto-assign industry_id - prioritize contact/company industry over user's default
                 target_industry_id = None
-                if user_industry_id:
-                    # Use user's current industry (for both industry admins and regular users)
-                    target_industry_id = user_industry_id
-                elif contact.get('industry'):
-                    # Fallback: try to match contact's industry
-                    industry_lookup = supabase.table('industries').select('id').ilike('name', f'%{contact["industry"]}%').limit(1).execute()
+                
+                # First: Try to match contact's industry field
+                if contact.get('industry'):
+                    # Look up industry_id from industry name (exact case-insensitive match)
+                    industry_lookup = supabase.table('industries').select('id').ilike('name', contact['industry'].strip()).limit(1).execute()
                     if industry_lookup.data:
                         target_industry_id = str(industry_lookup.data[0]['id'])
+                        logger.info(f"Assigned industry_id from contact industry: {contact['industry']} -> {target_industry_id}")
+                
+                # Second: Try to match company's industry field (if contact industry not found)
+                if not target_industry_id and contact.get('company_id'):
+                    company_response = supabase.table('companies').select('industry').eq('id', contact['company_id']).limit(1).execute()
+                    if company_response.data and company_response.data[0].get('industry'):
+                        company_industry = company_response.data[0]['industry']
+                        # Look up industry_id from industry name (exact case-insensitive match)
+                        industry_lookup = supabase.table('industries').select('id').ilike('name', company_industry.strip()).limit(1).execute()
+                        if industry_lookup.data:
+                            target_industry_id = str(industry_lookup.data[0]['id'])
+                            logger.info(f"Assigned industry_id from company industry: {company_industry} -> {target_industry_id}")
+                
+                # Third: Fallback to user's current industry (only if contact/company industry not found)
+                if not target_industry_id and user_industry_id:
+                    target_industry_id = user_industry_id
+                    logger.info(f"Assigned industry_id from user's default industry: {target_industry_id}")
                 
                 # Create target
                 target_data = {
@@ -1945,4 +2058,317 @@ def export_targets():
                 'error': 'Google Sheets not configured. Please add credentials to .env.local'
             }), 400
         return jsonify({'error': error_msg}), 500
+
+
+@targets_bp.route('/api/targets/import-excel', methods=['POST'])
+@require_auth
+@require_use_case('target_management')
+def import_targets_excel():
+    """Import targets from Excel file"""
+    try:
+        import openpyxl
+        from io import BytesIO
+        
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file provided'}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+        
+        supabase = get_supabase_client(current_app)
+        if not supabase:
+            return jsonify({'error': 'Supabase not configured'}), 503
+        
+        # Read Excel file
+        file_content = file.read()
+        workbook = openpyxl.load_workbook(BytesIO(file_content), data_only=True)
+        sheet = workbook.active
+        
+        # Get headers from first row
+        headers = [str(cell.value).strip() if cell.value else '' for cell in sheet[1]]
+        
+        # Column mapping (Excel column -> target field)
+        column_map = {
+            'company_name': ['company name', 'company', 'company_name'],
+            'contact_name': ['contact name', 'contact', 'contact_name', 'name'],
+            'role': ['role', 'title', 'position'],
+            'email': ['email', 'email address'],
+            'phone': ['phone', 'phone number', 'mobile'],
+            'linkedin_url': ['linkedin', 'linkedin url', 'linkedin_url'],
+            'industry': ['industry'],
+            'status': ['status'],
+            'pain_point': ['pain point', 'pain_point'],
+            'pitch_angle': ['pitch angle', 'pitch_angle']
+        }
+        
+        # Find column indices
+        column_indices = {}
+        for field, possible_names in column_map.items():
+            for idx, header in enumerate(headers):
+                if header.lower() in [name.lower() for name in possible_names]:
+                    column_indices[field] = idx
+                    break
+        
+        imported_count = 0
+        errors = []
+        
+        # Process rows (skip header)
+        for row_idx, row in enumerate(sheet.iter_rows(min_row=2, values_only=False), start=2):
+            try:
+                target_data = {}
+                
+                # Extract data based on column mapping
+                for field, col_idx in column_indices.items():
+                    if col_idx < len(row) and row[col_idx].value:
+                        value = str(row[col_idx].value).strip()
+                        if value:
+                            target_data[field] = value
+                
+                # Skip empty rows
+                if not target_data.get('company_name'):
+                    continue
+                
+                # Look up industry_id if industry name provided
+                if 'industry' in target_data and target_data['industry']:
+                    industry_name = target_data.pop('industry')
+                    industry_lookup = supabase.table('industries').select('id').ilike('name', industry_name.strip()).limit(1).execute()
+                    if industry_lookup.data:
+                        target_data['industry_id'] = industry_lookup.data[0]['id']
+                
+                # Convert status to enum value
+                if 'status' in target_data:
+                    status = target_data['status'].upper()
+                    if status not in ['NEW', 'CONTACTED', 'INTERESTED', 'NOT_INTERESTED']:
+                        target_data['status'] = 'NEW'
+                    else:
+                        target_data['status'] = status
+                else:
+                    target_data['status'] = 'NEW'
+                
+                # Create target
+                target = Target(**target_data)
+                target_dict = target.to_dict()
+                target_dict.pop('id', None)
+                
+                supabase.table('targets').insert(target_dict).execute()
+                imported_count += 1
+                
+            except Exception as e:
+                errors.append(f"Row {row_idx}: {str(e)}")
+                logger.warning(f"Failed to import target from row {row_idx}: {e}")
+                continue
+        
+        workbook.close()
+        
+        # Invalidate cache
+        if imported_count > 0:
+            invalidate_cache('targets:*')
+        
+        return jsonify({
+            'success': True,
+            'imported': imported_count,
+            'errors': errors[:10]  # Limit errors returned
+        })
+        
+    except Exception as e:
+        logger.error(f"Error importing targets from Excel: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@targets_bp.route('/api/targets/export-excel', methods=['GET'])
+@require_auth
+@require_use_case('target_management')
+def export_targets_excel():
+    """Export targets to Excel file"""
+    try:
+        import openpyxl
+        from io import BytesIO
+        
+        supabase = get_supabase_client(current_app)
+        if not supabase:
+            return jsonify({'error': 'Supabase not configured'}), 503
+        
+        # Get current user for industry-based filtering (same as list_targets)
+        user = get_current_user()
+        user_industry_id = None
+        is_industry_admin = False
+        is_super_user = False
+        
+        if user:
+            is_industry_admin = getattr(user, 'is_industry_admin', False)
+            is_super_user = getattr(user, 'is_super_user', False)
+            if hasattr(user, 'active_industry_id') and user.active_industry_id:
+                user_industry_id = str(user.active_industry_id)
+            elif hasattr(user, 'industry_id') and user.industry_id:
+                user_industry_id = str(user.industry_id)
+        
+        # Build query with same filtering logic as list_targets
+        query = supabase.table('targets').select('*, industries!left(name)')
+        
+        # Apply industry filtering for non-super users (same as list_targets)
+        if not is_super_user and user_industry_id:
+            query = query.eq('industry_id', user_industry_id)
+        
+        response = query.execute()
+        targets = response.data or []
+        
+        if not targets:
+            return jsonify({'error': 'No targets to export'}), 400
+        
+        # Create workbook
+        workbook = openpyxl.Workbook()
+        sheet = workbook.active
+        sheet.title = 'Targets'
+        
+        # Headers
+        headers = ['Company Name', 'Contact Name', 'Role', 'Email', 'Phone', 'LinkedIn URL', 'Industry', 'Status', 'Pain Point', 'Pitch Angle']
+        sheet.append(headers)
+        
+        # Data rows
+        for target in targets:
+            industry_name = target.get('industries', {}).get('name', '') if isinstance(target.get('industries'), dict) else ''
+            row = [
+                target.get('company_name', ''),
+                target.get('contact_name', ''),
+                target.get('role', ''),
+                target.get('email', ''),
+                target.get('phone', ''),
+                target.get('linkedin_url', ''),
+                industry_name,
+                target.get('status', 'NEW'),
+                target.get('pain_point', ''),
+                target.get('pitch_angle', '')
+            ]
+            sheet.append(row)
+        
+        # Save to BytesIO
+        output = BytesIO()
+        workbook.save(output)
+        output.seek(0)
+        
+        from flask import Response
+        return Response(
+            output.getvalue(),
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            headers={
+                'Content-Disposition': f'attachment; filename=targets_export_{datetime.now().strftime("%Y%m%d")}.xlsx'
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Error exporting targets to Excel: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@targets_bp.route('/api/targets/export-sheets', methods=['POST'])
+@require_auth
+@require_use_case('sheets_import_export')
+def export_targets_sheets():
+    """Export targets to Google Sheets"""
+    try:
+        from app.integrations.google_sheets_client import GoogleSheetsClient
+        
+        supabase = get_supabase_client(current_app)
+        if not supabase:
+            return jsonify({'error': 'Supabase not configured'}), 503
+        
+        # Get targets from request body or fetch all
+        data = request.get_json() or {}
+        targets_data = data.get('targets')
+        
+        if targets_data:
+            # Use provided targets
+            targets_dicts = targets_data
+        else:
+            # Fetch all targets
+            response = supabase.table('targets').select('*').execute()
+            targets = [Target.from_dict(t) for t in response.data]
+            targets_dicts = [t.to_dict() for t in targets]
+        
+        if not targets_dicts:
+            return jsonify({
+                'success': False,
+                'error': 'No targets to export'
+            }), 400
+        
+        try:
+            sheets_client = GoogleSheetsClient()
+        except ValueError as e:
+            return jsonify({
+                'success': False,
+                'error': 'Google Sheets not configured'
+            }), 400
+        
+        try:
+            success = sheets_client.export_targets(targets_dicts)
+            
+            if success:
+                return jsonify({
+                    'success': True,
+                    'exported': len(targets_dicts),
+                    'url': f'https://docs.google.com/spreadsheets/d/{sheets_client.spreadsheet_id}',
+                    'spreadsheet_id': sheets_client.spreadsheet_id
+                })
+            else:
+                return jsonify({
+                    'success': False,
+                    'error': 'Failed to export to Google Sheets'
+                }), 500
+        except Exception as sheets_error:
+            error_str = str(sheets_error)
+            error_msg = error_str
+            
+            # Try to extract error details from exception
+            error_details = {}
+            if hasattr(sheets_error, 'error_details'):
+                error_details = sheets_error.error_details
+            elif isinstance(sheets_error.args[0], dict):
+                error_details = sheets_error.args[0].get('details', {})
+                error_str = sheets_error.args[0].get('message', error_str)
+            
+            # Check for rate limit errors in multiple ways
+            error_lower = error_str.lower()
+            details_str = str(error_details).lower()
+            
+            # Check error details dict for rate limit indicators
+            if isinstance(error_details, dict):
+                error_code = error_details.get('code', '')
+                error_status = error_details.get('status', '')
+                error_message = error_details.get('message', '')
+                
+                if (error_code == 429 or error_status == 'RESOURCE_EXHAUSTED' or 
+                    'rate_limit' in error_message.lower() or 'quota exceeded' in error_message.lower() or
+                    'write requests' in error_message.lower()):
+                    error_msg = 'Google Sheets API rate limit exceeded. Please wait a minute and try again. The limit is 60 write requests per minute per user.'
+                    logger.warning(f"Google Sheets rate limit exceeded: {error_str}, Details: {error_details}")
+                elif 'quota' in error_message.lower():
+                    error_msg = 'Google Sheets API quota exceeded. Please wait a few minutes before trying again.'
+                    logger.warning(f"Google Sheets quota exceeded: {error_str}, Details: {error_details}")
+            
+            # Also check error string directly
+            if ('429' in error_str or 'rate_limit' in error_lower or 'quota exceeded' in error_lower or 
+                'resource_exhausted' in error_lower or 'rate_limit' in details_str or 
+                'write requests' in error_lower):
+                if 'rate limit' not in error_msg.lower():
+                    error_msg = 'Google Sheets API rate limit exceeded. Please wait a minute and try again. The limit is 60 write requests per minute per user.'
+                    logger.warning(f"Google Sheets rate limit exceeded: {error_str}, Details: {error_details}")
+            elif 'quota' in error_lower and 'quota exceeded' not in error_msg.lower():
+                error_msg = 'Google Sheets API quota exceeded. Please wait a few minutes before trying again.'
+                logger.warning(f"Google Sheets quota exceeded: {error_str}, Details: {error_details}")
+            
+            logger.error(f"Error exporting targets to Google Sheets: {sheets_error}")
+            import traceback
+            logger.error(traceback.format_exc())
+            
+            return jsonify({
+                'success': False,
+                'error': error_msg
+            }), 500
+        
+    except Exception as e:
+        logger.error(f"Error exporting targets to Google Sheets: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify({'error': str(e)}), 500
 

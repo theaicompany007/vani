@@ -91,8 +91,11 @@ class PitchGenerator:
         # Query RAG for industry-specific case studies and solutions
         if self.rag_client and self.rag_client.enabled:
             try:
-                rag_query = f"What are successful case studies, solutions, and pain points for {company_name} in the {industry_name} sector? Focus on distribution, sales, and digital transformation challenges."
-                rag_response = self.rag_client.query(rag_query, industry=industry_name, top_k=3)
+                # Enhanced query with explicit industry context
+                rag_query = f"What are successful case studies, solutions, and pain points for {company_name} in the {industry_name} sector? Focus on distribution, sales, and digital transformation challenges specific to {industry_name} industry."
+                # Always pass industry to RAG queries for proper filtering
+                rag_response = self.rag_client.query(rag_query, industry=industry_name, top_k=5)
+                logger.info(f"RAG query for {company_name} in {industry_name}: {rag_response.get('total_results', 0)} results")
                 if rag_response.get('success') and rag_response.get('data'):
                     rag_results = rag_response['data'].get('results', [])
                     rag_insights = "\n".join([r.get('content', '') for r in rag_results[:3]])

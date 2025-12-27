@@ -58,13 +58,15 @@ def list_companies():
         count_query = supabase.table('companies').select('id', count='exact')
         
         if industry:
-            count_query = count_query.ilike('industry', f'%{industry}%')
+            # Use exact case-insensitive match (no wildcards) to match count calculation
+            # Trim the industry name to handle any whitespace issues
+            count_query = count_query.ilike('industry', industry.strip())
         elif user_industry_id and not is_super_user:
             # Regular user: Filter by active_industry_id (only if not super user)
             industry_lookup = supabase.table('industries').select('name').eq('id', user_industry_id).limit(1).execute()
             if industry_lookup.data:
                 industry_name = industry_lookup.data[0]['name']
-                count_query = count_query.ilike('industry', f'%{industry_name}%')
+                count_query = count_query.ilike('industry', industry_name)
         
         if search:
             count_query = count_query.or_(f'name.ilike.%{search}%,domain.ilike.%{search}%,industry.ilike.%{search}%')
@@ -80,12 +82,12 @@ def list_companies():
             # Fallback: query all matching records to count
             all_query = supabase.table('companies').select('id')
             if industry:
-                all_query = all_query.ilike('industry', f'%{industry}%')
+                all_query = all_query.ilike('industry', industry.strip())
             elif user_industry_id and not is_super_user:
                 industry_lookup = supabase.table('industries').select('name').eq('id', user_industry_id).limit(1).execute()
                 if industry_lookup.data:
                     industry_name = industry_lookup.data[0]['name']
-                    all_query = all_query.ilike('industry', f'%{industry_name}%')
+                    all_query = all_query.ilike('industry', industry_name)
             if search:
                 all_query = all_query.or_(f'name.ilike.%{search}%,domain.ilike.%{search}%,industry.ilike.%{search}%')
             all_response = all_query.execute()
@@ -95,13 +97,15 @@ def list_companies():
         query = supabase.table('companies').select('*')
         
         if industry:
-            query = query.ilike('industry', f'%{industry}%')
+            # Use exact case-insensitive match (no wildcards) to match count calculation
+            # Trim the industry name to handle any whitespace issues
+            query = query.ilike('industry', industry.strip())
         elif user_industry_id and not is_super_user:
             # Regular user: Filter by active_industry_id (only if not super user)
             industry_lookup = supabase.table('industries').select('name').eq('id', user_industry_id).limit(1).execute()
             if industry_lookup.data:
                 industry_name = industry_lookup.data[0]['name']
-                query = query.ilike('industry', f'%{industry_name}%')
+                query = query.ilike('industry', industry_name)
         
         if search:
             query = query.or_(f'name.ilike.%{search}%,domain.ilike.%{search}%,industry.ilike.%{search}%')
@@ -123,50 +127,53 @@ def list_companies():
         
         companies_list = []
         
-        # Optimize: Get contact counts efficiently to avoid timeout issues
-        # For large datasets, we'll skip contact counts to ensure fast loading
-        company_ids = [str(c.get('id', '')) for c in companies_data if c.get('id')]
+        # Get contact counts efficiently using a single query with grouping
+        company_ids = [c.get('id') for c in companies_data if c.get('id')]
         contact_counts = {}
         
-        # Performance optimization: Skip contact counts for large lists to avoid timeout
-        # Contact counts can be loaded on-demand when viewing individual company details
-        # This ensures the list loads quickly even with 1000+ companies
-        skip_contact_counts = len(company_ids) > 50  # Skip counts if more than 50 companies
+        # Initialize all companies with 0 count (using string keys for consistency)
+        for company in companies_data:
+            company_id = company.get('id')
+            if company_id:
+                contact_counts[str(company_id)] = 0
         
-        if skip_contact_counts:
-            logger.info(f"Skipping contact counts for {len(company_ids)} companies to ensure fast loading")
-            # All counts will default to 0
-        else:
-            # For smaller lists (<=50), fetch contact counts with timeout protection
+        # Fetch all contact counts in a single efficient query
+        if company_ids:
             try:
-                import time
-                start_time = time.time()
-                timeout_seconds = 5  # Max 5 seconds for contact count queries
+                # Filter out None values and ensure we have valid UUIDs
+                valid_company_ids = [cid for cid in company_ids if cid is not None]
                 
-                for company_id in company_ids:
-                    # Check timeout
-                    if time.time() - start_time > timeout_seconds:
-                        logger.warning(f"Contact count query timeout after {timeout_seconds}s, skipping remaining")
-                        break
-                    
+                if valid_company_ids:
+                    # Use a single query to get all contacts with company_id in our list
+                    # Supabase .in_() should handle UUIDs correctly
+                    # Limit to 1000 at a time to avoid query size issues
                     try:
-                        count_response = supabase.table('contacts')\
-                            .select('id', count='exact')\
-                            .eq('company_id', company_id)\
-                            .limit(1)\
+                        contacts_response = supabase.table('contacts')\
+                            .select('company_id')\
+                            .in_('company_id', valid_company_ids[:1000])\
                             .execute()
-                        
-                        if hasattr(count_response, 'count') and count_response.count is not None:
-                            contact_counts[company_id] = count_response.count
-                        else:
-                            contact_counts[company_id] = 0
-                    except Exception as single_error:
-                        # Skip this company's count if it times out or errors
-                        logger.debug(f"Error getting contact count for company {company_id}: {single_error}")
-                        contact_counts[company_id] = 0
-                        continue
+                    except Exception as query_error:
+                        logger.warning(f"Error querying contacts for company IDs: {query_error}")
+                        contacts_response = type('obj', (object,), {'data': []})()
+                    
+                    # Count contacts per company
+                    if contacts_response.data:
+                        for contact in contacts_response.data:
+                            company_id = contact.get('company_id')
+                            if company_id:
+                                # Convert to string for consistent key matching
+                                company_id_str = str(company_id)
+                                if company_id_str in contact_counts:
+                                    contact_counts[company_id_str] = contact_counts.get(company_id_str, 0) + 1
+                    
+                    total_contacts_found = sum(contact_counts.values())
+                    logger.info(f"Fetched contact counts for {len(valid_company_ids)} companies: {total_contacts_found} total contacts found")
+                else:
+                    logger.warning("No valid company IDs to query contact counts for")
             except Exception as count_error:
-                logger.warning(f"Error getting contact counts (will default to 0): {count_error}")
+                logger.error(f"Error getting contact counts (will default to 0): {count_error}")
+                import traceback
+                logger.error(traceback.format_exc())
                 # Continue without contact counts - they'll default to 0
         
         # Process companies and assign contact counts
@@ -175,7 +182,13 @@ def list_companies():
                 company = Company.from_dict(c).to_dict()
                 company_id = str(company['id'])
                 # Get contact count from our pre-fetched map, default to 0
-                company['contact_count'] = contact_counts.get(company_id, 0)
+                contact_count = contact_counts.get(company_id, 0)
+                company['contact_count'] = contact_count
+                
+                # Log for debugging if count is 0 but we expect contacts
+                if contact_count == 0:
+                    logger.debug(f"Company {company.get('name', 'unknown')} (ID: {company_id}) has 0 contacts")
+                
                 companies_list.append(company)
             except Exception as company_error:
                 logger.warning(f"Error processing company {c.get('id', 'unknown')}: {company_error}")

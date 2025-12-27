@@ -89,6 +89,9 @@ class GoogleSheetsClient:
             
         Returns:
             Success status
+            
+        Raises:
+            Exception: If export fails, raises exception with error details
         """
         try:
             # Get or create worksheet
@@ -109,18 +112,72 @@ class GoogleSheetsClient:
                 headers = list(targets[0].keys())
                 worksheet.append_row(headers)
                 
-                # Add data rows
-                for target in targets:
-                    if target:  # Skip empty targets
-                        row = [str(target.get(header, '')) for header in headers]
-                        worksheet.append_row(row)
+                # Add data rows in batches to avoid rate limits
+                # Google Sheets API allows 60 write requests per minute per user
+                # We'll batch rows to minimize API calls
+                batch_size = 100  # Process in batches
+                total_batches = (len(targets) + batch_size - 1) // batch_size
+                
+                for batch_idx, i in enumerate(range(0, len(targets), batch_size)):
+                    batch = targets[i:i + batch_size]
+                    batch_rows = []
+                    
+                    for target in batch:
+                        if target:  # Skip empty targets
+                            row = [str(target.get(header, '')) for header in headers]
+                            batch_rows.append(row)
+                    
+                    # Use batch update for better performance and rate limit management
+                    if batch_rows:
+                        try:
+                            worksheet.append_rows(batch_rows)
+                            logger.debug(f"Exported batch {batch_idx + 1}/{total_batches} ({len(batch_rows)} rows)")
+                        except Exception as batch_error:
+                            # If batch update fails, try individual rows
+                            logger.warning(f"Batch update failed, falling back to individual rows: {batch_error}")
+                            for row in batch_rows:
+                                worksheet.append_row(row)
             
             logger.info(f"Exported {len(targets)} targets to Google Sheets")
             return True
             
         except Exception as e:
-            logger.error(f"Failed to export targets: {str(e)}")
-            return False
+            error_str = str(e)
+            error_dict = {}
+            
+            # Try to extract error details if it's a Google API error
+            # gspread wraps Google API errors, so check for nested error info
+            if hasattr(e, 'response'):
+                try:
+                    if hasattr(e.response, 'json'):
+                        error_dict = e.response.json()
+                    elif hasattr(e.response, 'text'):
+                        import json
+                        error_dict = json.loads(e.response.text)
+                except:
+                    pass
+            
+            # Also check if error has error_info attribute (gspread style)
+            if hasattr(e, 'error_info'):
+                error_dict = e.error_info
+            
+            # Log the full error
+            logger.error(f"Failed to export targets: {error_str}")
+            if error_dict:
+                logger.error(f"Error details: {error_dict}")
+            
+            # Re-raise with error details preserved
+            # Format error message to include details for API to parse
+            if error_dict:
+                error_msg = f"{error_str} | Details: {error_dict}"
+            else:
+                error_msg = error_str
+            
+            # Create a new exception with the formatted message
+            new_exception = Exception(error_msg)
+            # Attach original error details as attribute for API to access
+            new_exception.error_details = error_dict
+            raise new_exception
     
     def export_activities(self, activities: List[Dict[str, Any]]) -> bool:
         """

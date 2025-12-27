@@ -379,6 +379,8 @@ def send_pitch(pitch_id):
     if channel not in ['email', 'whatsapp', 'linkedin']:
         logger.warning(f"Invalid channel specified: {channel}")
         return jsonify({'error': f'Invalid channel: {channel}. Must be one of: email, whatsapp, linkedin'}), 400
+    
+    from flask import current_app
     supabase = get_supabase_client(current_app)
     if not supabase:
         return jsonify({'error': 'Supabase not configured'}), 503
@@ -749,6 +751,7 @@ def export_pitch_ppt(pitch_id):
 def get_industry_context_api(industry):
     """Get industry-specific context (persona, pain points, use cases)"""
     try:
+        from flask import current_app
         from urllib.parse import unquote
         from app.services.industry_persona_mapping import IndustryPersonaMapping
         
@@ -783,6 +786,99 @@ def get_industry_context_api(industry):
         
     except Exception as e:
         logger.error(f"Error getting industry context for {industry}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'industry': industry
+        }), 500
+
+
+@pitch_bp.route('/api/pitch/industry-metrics/<industry>', methods=['GET'])
+@require_auth
+@require_use_case('pitch_presentation')
+def get_industry_metrics_api(industry):
+    """Get industry-specific metrics for personalization"""
+    from flask import current_app
+    from urllib.parse import unquote
+    from app.services.industry_persona_mapping import IndustryPersonaMapping
+    
+    try:
+        supabase = get_supabase_client(current_app)
+        if not supabase:
+            return jsonify({'error': 'Supabase not configured'}), 503
+        
+        # Decode URL-encoded industry name
+        industry_decoded = unquote(industry)
+        logger.info(f"Getting metrics for industry: {industry_decoded}")
+        
+        metrics = IndustryPersonaMapping.get_industry_metrics(industry_decoded, supabase_client=supabase)
+        
+        return jsonify({
+            'success': True,
+            'industry': industry_decoded,
+            'metrics': metrics
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting industry metrics for {industry}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'industry': industry
+        }), 500
+
+
+@pitch_bp.route('/api/pitch/extended-context/<industry>', methods=['GET'])
+@require_auth
+@require_use_case('pitch_presentation')
+def get_extended_context_api(industry):
+    """Get extended context for personalization (industry + persona + target)"""
+    from flask import current_app
+    from urllib.parse import unquote
+    from app.services.industry_persona_mapping import IndustryPersonaMapping
+    
+    try:
+        supabase = get_supabase_client(current_app)
+        if not supabase:
+            return jsonify({'error': 'Supabase not configured'}), 503
+        
+        # Decode URL-encoded industry name
+        industry_decoded = unquote(industry)
+        
+        # Get optional target_id from query params
+        target_id = request.args.get('target_id')
+        target_data = None
+        
+        if target_id:
+            try:
+                target_response = supabase.table('targets').select('*').eq('id', target_id).limit(1).execute()
+                if target_response.data:
+                    target_data = target_response.data[0]
+            except Exception as e:
+                logger.warning(f"Error fetching target {target_id}: {e}")
+        
+        # Get persona (optional)
+        persona = request.args.get('persona')
+        
+        extended_context = IndustryPersonaMapping.get_extended_context(
+            industry_decoded,
+            persona=persona,
+            target=target_data,
+            supabase_client=supabase
+        )
+        
+        return jsonify({
+            'success': True,
+            'industry': industry_decoded,
+            'context': extended_context
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting extended context for {industry}: {e}")
         import traceback
         logger.error(traceback.format_exc())
         return jsonify({

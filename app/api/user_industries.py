@@ -23,16 +23,27 @@ def get_user_industries(user_id):
         try:
             response = supabase.table('user_industries').select('*, industries(id, name)').eq('user_id', user_id).order('is_default', desc=True).order('assigned_at', desc=True).execute()
             
+            logger.debug(f"Raw user_industries response for user {user_id}: {response.data}")
+            
             industries = []
             if response.data:
                 for ui in response.data:
                     industry = ui.get('industries', {})
+                    # Ensure is_default is a boolean
+                    is_default = ui.get('is_default', False)
+                    if isinstance(is_default, str):
+                        is_default = is_default.lower() in ('true', '1', 'yes')
+                    elif isinstance(is_default, int):
+                        is_default = bool(is_default)
+                    
                     industries.append({
                         'id': str(ui['industry_id']),
                         'name': industry.get('name', 'Unknown'),
-                        'is_default': ui.get('is_default', False),
+                        'is_default': is_default,
                         'assigned_at': ui.get('assigned_at')
                     })
+            
+            logger.debug(f"Processed industries for user {user_id}: {industries}")
         except Exception as table_error:
             error_str = str(table_error)
             if 'PGRST205' in error_str or 'user_industries' in error_str.lower():
@@ -185,15 +196,26 @@ def set_default_industry(user_id):
         if not check.data:
             return jsonify({'error': 'User does not have this industry assigned'}), 400
         
-        # Set as default (trigger will handle updating app_users.default_industry_id)
-        supabase.table('user_industries').update({'is_default': True}).eq('user_id', user_id).eq('industry_id', industry_id).execute()
+        # First, unset all other defaults for this user
+        supabase.table('user_industries').update({'is_default': False}).eq('user_id', user_id).execute()
+        
+        # Set this one as default
+        result1 = supabase.table('user_industries').update({'is_default': True}).eq('user_id', user_id).eq('industry_id', industry_id).execute()
         
         # Also update app_users.default_industry_id directly
-        supabase.table('app_users').update({'default_industry_id': industry_id}).eq('id', user_id).execute()
+        result2 = supabase.table('app_users').update({'default_industry_id': industry_id}).eq('id', user_id).execute()
+        
+        # Verify both updates succeeded
+        if not result1.data:
+            logger.warning(f"user_industries update returned no data for user {user_id}, industry {industry_id}")
+        if not result2.data:
+            logger.warning(f"app_users update returned no data for user {user_id}, industry {industry_id}")
         
         logger.info(f"Set default industry {industry_id} for user {user_id}")
-        return jsonify({'success': True, 'message': 'Default industry set'})
+        return jsonify({'success': True, 'message': 'Default industry set', 'industry_id': industry_id})
     except Exception as e:
         logger.error(f"Error setting default industry: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
 

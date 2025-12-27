@@ -21,8 +21,14 @@ contacts_bp = Blueprint('contacts', __name__)
 @require_auth
 @require_use_case('contact_management')
 def list_contacts():
-    """List all contacts with optional filters and industry-based access control"""
+    """List all contacts with optional filters and industry-based access control
+    Uses Redis caching to store all contacts, then paginates in-memory for performance
+    """
     try:
+        from app.integrations.redis_client import REDIS_AVAILABLE, redis_client
+        from app.integrations.cache_client import cache as in_memory_cache
+        import json
+        
         supabase = get_supabase_client(current_app)
         if not supabase:
             return jsonify({'error': 'Supabase not configured'}), 503
@@ -30,6 +36,7 @@ def list_contacts():
         # Get current user for industry-based filtering
         from app.auth import get_current_user
         user = get_current_user()
+        user_id = str(user.id) if user and hasattr(user, 'id') else 'anonymous'
         user_industry_id = None
         is_industry_admin = False
         is_super_user = False
@@ -45,99 +52,152 @@ def list_contacts():
         # Get query parameters
         company_id = request.args.get('company_id')
         industry = request.args.get('industry')  # Manual filter (super users only)
-        search = request.args.get('search')
-        limit = int(request.args.get('limit', 1000))  # Increased default limit to show all contacts
+        # Support both 'search' and 'q' parameters for backward compatibility
+        search = request.args.get('search') or request.args.get('q')
+        limit = int(request.args.get('limit', 50))  # Default to 50 for pagination
         offset = int(request.args.get('offset', 0))
+        refresh_cache = request.args.get('refresh_cache', 'false').lower() == 'true'
         
-        # Industry-based filtering - only apply if user is NOT a super user
-        # Super users should see all contacts regardless of industry
-        if is_industry_admin and user_industry_id and not is_super_user:
-            # Industry admin: Only see contacts from their assigned industry
-            # Get industry name from industry_id
-            industry_lookup = supabase.table('industries').select('name').eq('id', user_industry_id).limit(1).execute()
-            if industry_lookup.data:
-                industry = industry_lookup.data[0]['name']  # Override with user's industry
-        
-        # Get total count first (before filtering)
-        # Use left join to include contacts without companies
-        count_query = supabase.table('contacts').select('id', count='exact')
+        # Build cache key based on user and filters
+        cache_key = f"contacts:all:{user_id}"
         if company_id:
-            count_query = count_query.eq('company_id', company_id)
+            cache_key += f":company:{company_id}"
         if industry:
-            count_query = count_query.ilike('industry', f'%{industry}%')
-        if search:
-            count_query = count_query.or_(f'name.ilike.%{search}%,email.ilike.%{search}%,phone.ilike.%{search}%,lead_source.ilike.%{search}%,role.ilike.%{search}%,company.ilike.%{search}%,industry.ilike.%{search}%')
-        # Execute count query - Supabase returns count in response
-        count_response = count_query.execute()
-        # Try multiple ways to get the count
-        if hasattr(count_response, 'count') and count_response.count is not None:
-            total_count = count_response.count
-        elif hasattr(count_response, 'data') and count_response.data:
-            total_count = len(count_response.data)
-        else:
-            # Fallback: query all matching records to count
-            all_query = supabase.table('contacts').select('id')
+            cache_key += f":industry:{industry}"
+        
+        # Try to get from cache (unless refresh requested)
+        cached_contacts = None
+        if not refresh_cache:
+            if REDIS_AVAILABLE:
+                try:
+                    cached = redis_client.get(cache_key)
+                    if cached:
+                        cached_contacts = json.loads(cached)
+                        logger.debug(f"✅ Cache HIT (Redis): {cache_key} - {len(cached_contacts)} contacts")
+                except Exception as e:
+                    logger.warning(f"Redis read error: {e}")
+            
+            # Fallback to in-memory cache
+            if cached_contacts is None:
+                cached_contacts = in_memory_cache.get(cache_key)
+                if cached_contacts:
+                    logger.debug(f"✅ Cache HIT (In-Memory): {cache_key} - {len(cached_contacts)} contacts")
+        
+        # If cache miss or refresh requested, fetch from database
+        if cached_contacts is None or refresh_cache:
+            logger.info(f"Cache MISS or refresh requested: {cache_key}, fetching all contacts from database...")
+            
+            # Industry-based filtering - only apply if user is NOT a super user
+            # Super users should see all contacts regardless of industry
+            if is_industry_admin and user_industry_id and not is_super_user:
+                # Industry admin: Only see contacts from their assigned industry
+                # Get industry name from industry_id
+                industry_lookup = supabase.table('industries').select('name').eq('id', user_industry_id).limit(1).execute()
+                if industry_lookup.data:
+                    industry = industry_lookup.data[0]['name']  # Override with user's industry
+            
+            # Fetch ALL contacts (no limit) for caching
+            query = supabase.table('contacts').select('*, companies!left(name, industry, domain)')
+            
             if company_id:
-                all_query = all_query.eq('company_id', company_id)
+                query = query.eq('company_id', company_id)
             if industry:
-                all_query = all_query.ilike('industry', f'%{industry}%')
-            if search:
-                all_query = all_query.or_(f'name.ilike.%{search}%,email.ilike.%{search}%,phone.ilike.%{search}%,lead_source.ilike.%{search}%,role.ilike.%{search}%,company.ilike.%{search}%,industry.ilike.%{search}%')
-            all_response = all_query.execute()
-            total_count = len(all_response.data) if all_response.data else 0
-        
-        # Select contacts with company information (using left join to include contacts without companies)
-        # Use left join syntax: companies!left(...) to include contacts without company_id
-        query = supabase.table('contacts').select('*, companies!left(name, industry, domain)')
-        
-        if company_id:
-            query = query.eq('company_id', company_id)
-        if industry:
-            query = query.ilike('industry', f'%{industry}%')
-        if search:
-            query = query.or_(f'name.ilike.%{search}%,email.ilike.%{search}%,phone.ilike.%{search}%,lead_source.ilike.%{search}%,role.ilike.%{search}%,company.ilike.%{search}%,industry.ilike.%{search}%')
-        
-        query = query.order('created_at', desc=True).limit(limit).offset(offset)
-        response = query.execute()
-        
-        contacts = []
-        for c in response.data:
+                # Use exact case-insensitive match (no wildcards) to match count calculation
+                # Trim the industry name to handle any whitespace issues
+                query = query.ilike('industry', industry.strip())
+            
+            # Order by created_at for consistency
+            query = query.order('created_at', desc=True)
+            
+            # Fetch all (use a large limit or paginate through all)
+            all_contacts_raw = []
+            page_size = 1000
+            page = 0
+            
+            while True:
+                page_query = query.limit(page_size).offset(page * page_size)
+                page_response = page_query.execute()
+                
+                if not page_response.data or len(page_response.data) == 0:
+                    break
+                
+                all_contacts_raw.extend(page_response.data)
+                page += 1
+                
+                # Safety limit to prevent infinite loops
+                if page > 100:  # Max 100k contacts
+                    logger.warning("Reached safety limit of 100 pages (100k contacts)")
+                    break
+            
+            # Process all contacts
+            all_contacts = []
+            for c in all_contacts_raw:
+                try:
+                    contact = Contact.from_dict(c).to_dict()
+                    # Enrich with company name if available
+                    companies_data = c.get('companies')
+                    if companies_data:
+                        if isinstance(companies_data, list) and len(companies_data) > 0:
+                            company = companies_data[0]
+                            if company and company.get('name'):
+                                contact['company_name'] = company['name']
+                            if company and company.get('industry'):
+                                contact['company_industry'] = company['industry']
+                        elif isinstance(companies_data, dict):
+                            if companies_data.get('name'):
+                                contact['company_name'] = companies_data['name']
+                            if companies_data.get('industry'):
+                                contact['company_industry'] = companies_data['industry']
+                    all_contacts.append(contact)
+                except Exception as contact_error:
+                    logger.warning(f"Error processing contact {c.get('id', 'unknown')}: {contact_error}")
+                    continue
+            
+            # Cache all contacts (TTL: 1 hour = 3600 seconds)
             try:
-                contact = Contact.from_dict(c).to_dict()
-                # Enrich with company name if available
-                # Handle both single company object and array of companies
-                companies_data = c.get('companies')
-                if companies_data:
-                    if isinstance(companies_data, list) and len(companies_data) > 0:
-                        # Array format (from join)
-                        company = companies_data[0]
-                        if company and company.get('name'):
-                            contact['company_name'] = company['name']
-                        if company and company.get('industry'):
-                            contact['company_industry'] = company['industry']
-                    elif isinstance(companies_data, dict):
-                        # Single object format
-                        if companies_data.get('name'):
-                            contact['company_name'] = companies_data['name']
-                        if companies_data.get('industry'):
-                            contact['company_industry'] = companies_data['industry']
-                contacts.append(contact)
-            except Exception as contact_error:
-                logger.warning(f"Error processing contact {c.get('id', 'unknown')}: {contact_error}")
-                import traceback
-                logger.warning(traceback.format_exc())
-                # Skip invalid contacts but continue processing
-                continue
+                if REDIS_AVAILABLE:
+                    redis_client.setex(cache_key, 3600, json.dumps(all_contacts))
+                    logger.info(f"💾 Cached {len(all_contacts)} contacts in Redis: {cache_key} (TTL: 3600s)")
+                else:
+                    in_memory_cache.set(cache_key, all_contacts, 3600)
+                    logger.info(f"💾 Cached {len(all_contacts)} contacts in-memory: {cache_key} (TTL: 3600s)")
+            except Exception as cache_error:
+                logger.warning(f"Error caching contacts: {cache_error}")
+            
+            cached_contacts = all_contacts
+        
+        # Apply search filter if provided (client-side filtering on cached data)
+        filtered_contacts = cached_contacts
+        if search:
+            search_lower = search.lower()
+            filtered_contacts = [
+                c for c in cached_contacts
+                if (c.get('name', '').lower().find(search_lower) >= 0 or
+                    c.get('email', '').lower().find(search_lower) >= 0 or
+                    c.get('phone', '').lower().find(search_lower) >= 0 or
+                    c.get('lead_source', '').lower().find(search_lower) >= 0 or
+                    c.get('role', '').lower().find(search_lower) >= 0 or
+                    c.get('company', '').lower().find(search_lower) >= 0 or
+                    c.get('company_name', '').lower().find(search_lower) >= 0 or
+                    c.get('industry', '').lower().find(search_lower) >= 0 or
+                    c.get('company_industry', '').lower().find(search_lower) >= 0)
+            ]
+        
+        # Paginate from filtered results
+        total_count = len(filtered_contacts)
+        paginated_contacts = filtered_contacts[offset:offset + limit]
         
         # Log summary for debugging
-        contacts_with_email = len([c for c in contacts if c.get('email')])
-        logger.info(f"Contacts API: Returning {len(contacts)} contacts (total: {total_count}), {contacts_with_email} with emails")
+        contacts_with_email = len([c for c in paginated_contacts if c.get('email')])
+        logger.info(f"Contacts API: Returning {len(paginated_contacts)} contacts (page {offset//limit + 1}, total: {total_count}, filtered from {len(cached_contacts)} cached), {contacts_with_email} with emails")
         
         return jsonify({
             'success': True,
-            'contacts': contacts,
-            'count': len(contacts),
-            'total': total_count
+            'contacts': paginated_contacts,
+            'count': len(paginated_contacts),
+            'total': total_count,
+            'cached': True,
+            'cache_key': cache_key
         })
         
     except Exception as e:
@@ -185,6 +245,7 @@ def get_contact(contact_id):
 @require_use_case('contact_management')
 def create_contact():
     """Create or update a contact (upsert by email)"""
+    from app.integrations.redis_client import invalidate_cache
     try:
         data = request.get_json()
         if not data:
@@ -238,6 +299,10 @@ def create_contact():
         
         contact = Contact.from_dict(response.data[0])
         
+        # Invalidate contacts cache
+        from app.integrations.redis_client import invalidate_cache
+        invalidate_cache('contacts:all:*')
+        
         return jsonify({
             'success': True,
             'contact': contact.to_dict()
@@ -284,6 +349,10 @@ def update_contact(contact_id):
         
         updated_contact = Contact.from_dict(response.data[0])
         
+        # Invalidate contacts cache
+        from app.integrations.redis_client import invalidate_cache
+        invalidate_cache('contacts:all:*')
+        
         return jsonify({
             'success': True,
             'contact': updated_contact.to_dict()
@@ -313,6 +382,10 @@ def delete_contact(contact_id):
             return jsonify({'error': 'Supabase not configured'}), 503
         
         response = supabase.table('contacts').delete().eq('id', str(contact_uuid)).execute()
+        
+        # Invalidate contacts cache
+        from app.integrations.redis_client import invalidate_cache
+        invalidate_cache('contacts:all:*')
         
         return jsonify({
             'success': True,
